@@ -535,7 +535,7 @@ abbr.term:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-
 }
 .eyebrow { color: var(--accent); }
 .viz-card h4, .checklist h4, .ask-box h4, .tile-label, .side-h { color: var(--muted); }
-.viz-card h4 abbr.term { text-transform: none; letter-spacing: 0; }
+.viz-card h4 abbr.term, .checklist h4 abbr.term, .ask-box h4 abbr.term { text-transform: inherit; letter-spacing: inherit; font: inherit; }
 .question { font-weight: 600; font-size: 30px; letter-spacing: -0.01em; }
 .answer { font-weight: 300; font-size: 18px; color: var(--ink); }
 .report-head h1 { font-weight: 600; font-size: 28px; }
