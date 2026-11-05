@@ -153,11 +153,22 @@
             const cls = inSim && inDes ? 'both' : inSim ? 'extra' : 'missing';
             return `<i class="pip ${cls}" title="${cls === 'both' ? 'In design and simulation' : cls === 'extra' ? 'In the simulation, not in the design' : 'In the design, not simulated'}"></i>`;
           }).join('');
+          // Match = ✓ green. Extra stations = ! amber (result may look better than the design).
+          // Missing stations = ✕ red (process tested with less capacity than proposed).
           const diff = x.stationsSim - x.stationsDesign;
-          return `<div class="pip-row"><span class="pip-label">${ctx.esc(x.process.name)}</span><span class="pip-set">${pips}</span>
-            <span class="pip-count">${x.stationsSim} / ${x.stationsDesign}${diff ? ` <b class="${diff > 0 ? 'more' : 'less'}">${diff > 0 ? '+' : '−'}${Math.abs(diff)}</b>` : ''}</span></div>`;
+          const st = diff === 0 ? { cls: 'ok', icon: '✓', note: 'Matches design' }
+            : diff > 0 ? { cls: 'warn', icon: '!', note: `${diff} extra` }
+            : { cls: 'bad', icon: '✕', note: `${-diff} missing` };
+          return `<div class="pip-row ${st.cls}"><span class="pip-label">${ctx.esc(x.process.name)}</span><span class="pip-set">${pips}</span>
+            <span class="count-chip ${st.cls}" title="Simulated / designed workstations">
+              <span class="cc-icon" aria-hidden="true">${st.icon}</span>
+              <span class="cc-num"><b>${x.stationsSim}</b><span class="cc-of">/ ${x.stationsDesign}</span></span>
+              <span class="cc-note">${st.note}</span>
+            </span></div>`;
         }).join('')}</div>
-        <div class="pip-legend"><span><i class="pip both"></i> in design and simulation</span><span><i class="pip extra"></i> simulation only</span><span><i class="pip missing"></i> design only</span></div>`;
+        <div class="pip-legend"><span><i class="pip both"></i> in design and simulation</span><span><i class="pip extra"></i> simulation only</span><span><i class="pip missing"></i> design only</span>
+          <span class="legend-sep"></span>
+          <span><i class="cc-icon mini ok">✓</i> matches</span><span><i class="cc-icon mini warn">!</i> extra: may look better than designed</span><span><i class="cc-icon mini bad">✕</i> missing: under-tested</span></div>`;
       howTo(left, [
         'Each square is one workstation, grouped by the process it serves. The count reads <b>simulated / designed</b>.',
         'A clean result is all dark squares. Orange squares are stations the proposal doesn\'t include; dashed ones are designed stations the simulation left out.',

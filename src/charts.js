@@ -187,7 +187,9 @@
     const box = document.createElement('div');
     container.appendChild(box);
     responsive(box, (W) => {
-      const rowH = 64, m = { l: 96, r: 24, t: 10, b: 30 };
+      // Left margin fits the longest group label (≈7px per character at 12.5px, 600 weight).
+      const longest = Math.max(...types.map((t) => String(t.label).length));
+      const rowH = 64, m = { l: Math.min(200, Math.max(96, longest * 7.4 + 20)), r: 24, t: 10, b: 30 };
       const H = m.t + m.b + rowH * types.length;
       const iw = W - m.l - m.r;
       const maxV = Math.max(ceiling || 0, ...types.flatMap((t) => t.list.map((s) => s.avgPerHour)));

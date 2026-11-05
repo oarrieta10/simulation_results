@@ -402,12 +402,13 @@
     draw();
   }
 
-  // Sequential blue ramp, light→dark (100→700); white text from step 450 up.
-  const RAMP = ['#cde2fb', '#b7d3f6', '#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#256abf', '#1c5cab', '#184f95', '#104281', '#0d366b'];
+  // Hai Robotics sequential ramp: hai-blue-1…5, hai-blue, darker-blue-4, darker-blue.
+  // White text from hai-blue-5 up.
+  const RAMP = ['#F0F3FF', '#D1D8FF', '#A8B2FF', '#808AFF', '#575FFF', '#2E31FA', '#070BED', '#04068B'];
   function heatStyle(v, max) {
     if (!v) return '';
     const i = Math.min(RAMP.length - 1, Math.round((v / max) * (RAMP.length - 1)));
-    return `background:${RAMP[i]};color:${i >= 7 ? '#fff' : '#0b0b0b'}`;
+    return `background:${RAMP[i]};color:${i >= 4 ? '#fff' : '#000'}`;
   }
 
   function renderData(view, r) {

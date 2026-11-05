@@ -1,52 +1,63 @@
+/* Hai Robotics design system (Brand Book & Visual Identity System, Sept 2024).
+   Token names in comments refer to the system's tokens.json. */
+@font-face { font-family: "Open Sans"; src: url("fonts/OpenSans-Variable.woff2") format("woff2"); font-weight: 300 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Open Sans"; src: url("fonts/OpenSans-Variable-Italic.woff2") format("woff2"); font-weight: 300 800; font-style: italic; font-display: swap; }
+
 :root {
   color-scheme: light;
-  --page: #f9f9f7;
-  --surface: #fcfcfb;
-  --surface-2: #f3f2ee;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
-  --accent: #2a78d6;
-  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
-  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+  /* brand constants */
+  --hai-blue: #2E31FA; --darker-blue: #04068B; --safety-orange: #FF9900;
+  --page: #FFFFFF;            /* surface */
+  --surface: #FFFFFF;         /* surface */
+  --surface-2: #F0F3FF;       /* surface-tint (hai-blue-1) */
+  --surface-muted: #E6E6E6;   /* surface-muted */
+  --ink: #000000;             /* ink-strong */
+  --ink-2: #373737;           /* ink (black-3c) */
+  --muted: #5A5A5A;           /* ink-muted (cool-grey-11) */
+  --grid: #E6E6E6;            /* line */
+  --axis: #AAAAAA;            /* cool-grey-8 */
+  --border: #E6E6E6;          /* line */
+  --accent: #2E31FA;          /* accent */
+  --focus: #2E31FA;           /* focus */
+  --on-brand: #FFFFFF;
+  /* charts: hai-blue, safety-orange, black-3c, greys, then the tint ramps */
+  --series-1: #2E31FA; --series-2: #FF9900; --series-3: #373737; --series-4: #AAAAAA;
+  --series-5: #808AFF; --series-6: #FFBE5C; --series-7: #04068B; --series-8: #5A5A5A;
   --status-good: #0ca30c; --status-warning: #fab219; --status-serious: #ec835a; --status-critical: #d03b3b;
   --good-text: #006300; --bad-text: #b02a2a;
-  --hover: rgba(11, 11, 11, 0.05);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --hover: rgba(46, 49, 250, 0.06);
+  --shadow: none;             /* no drop shadows in the brand */
+  --font: "Open Sans", Arial, "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
-    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
-    --border: rgba(255, 255, 255, 0.1); --accent: #3987e5;
-    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
-    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
-    --good-text: #0ca30c; --bad-text: #e66767; --hover: rgba(255, 255, 255, 0.06);
-    --shadow: none;
+    --page: #000000; --surface: #000000; --surface-2: #04068B; --surface-muted: #373737;
+    --ink: #FFFFFF; --ink-2: #E6E6E6; --muted: #AAAAAA; --grid: #373737; --axis: #5A5A5A;
+    --border: #373737; --accent: #808AFF; --focus: #FF9900;
+    --series-1: #808AFF; --series-2: #FF9900; --series-3: #AAAAAA; --series-4: #5A5A5A;
+    --series-5: #D1D8FF; --series-6: #FFCE85; --series-7: #575FFF; --series-8: #E6E6E6;
+    --good-text: #0ca30c; --bad-text: #e66767; --hover: rgba(128, 138, 255, 0.10);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
-  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
-  --border: rgba(255, 255, 255, 0.1); --accent: #3987e5;
-  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
-  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
-  --good-text: #0ca30c; --bad-text: #e66767; --hover: rgba(255, 255, 255, 0.06);
-  --shadow: none;
+  --page: #000000; --surface: #000000; --surface-2: #04068B; --surface-muted: #373737;
+  --ink: #FFFFFF; --ink-2: #E6E6E6; --muted: #AAAAAA; --grid: #373737; --axis: #5A5A5A;
+  --border: #373737; --accent: #808AFF; --focus: #FF9900;
+  --series-1: #808AFF; --series-2: #FF9900; --series-3: #AAAAAA; --series-4: #5A5A5A;
+  --series-5: #D1D8FF; --series-6: #FFCE85; --series-7: #575FFF; --series-8: #E6E6E6;
+  --good-text: #0ca30c; --bad-text: #e66767; --hover: rgba(128, 138, 255, 0.10);
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 72px; }
 body {
   margin: 0; background: var(--page); color: var(--ink);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 400 14px/1.5 var(--font);
 }
-h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: 0; color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
@@ -362,8 +373,29 @@ abbr.term:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-
 .pip.both { background: var(--series-1); }
 .pip.extra { background: var(--series-2); }
 .pip.missing { border: 1.5px dashed var(--ink-2); }
-.pip-count { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
-.pip-count .more, .pip-count .less { color: var(--bad-text); }
+.pip-row { padding: 6px 8px; margin: 0 -8px; border-radius: 8px; border-left: 3px solid transparent; }
+.pip-row.warn { background: color-mix(in srgb, var(--status-warning) 9%, transparent); border-left-color: var(--status-warning); }
+.pip-row.bad { background: color-mix(in srgb, var(--status-critical) 8%, transparent); border-left-color: var(--status-critical); }
+.count-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); white-space: nowrap; min-width: 168px;
+}
+.cc-icon {
+  width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; flex: none;
+  font-size: 12px; font-weight: 800; font-style: normal; line-height: 1; color: #fff;
+}
+.cc-icon.mini { width: 16px; height: 16px; font-size: 10px; }
+.ok > .cc-icon, .cc-icon.ok { background: var(--status-good); }
+.warn > .cc-icon, .cc-icon.warn { background: var(--status-warning); color: #0b0b0b; }
+.bad > .cc-icon, .cc-icon.bad { background: var(--status-critical); }
+.cc-num { font-variant-numeric: tabular-nums; font-size: 15px; }
+.cc-num b { font-weight: 700; }
+.cc-of { color: var(--muted); font-size: 12.5px; margin-left: 3px; }
+.cc-note { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.count-chip.warn { border-color: color-mix(in srgb, var(--status-warning) 60%, transparent); }
+.count-chip.bad { border-color: color-mix(in srgb, var(--status-critical) 55%, transparent); }
+.count-chip.bad .cc-note { color: var(--bad-text); }
+.legend-sep { width: 1px; align-self: stretch; background: var(--border); padding: 0 !important; }
 .pip-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--ink-2); }
 .pip-legend span { display: inline-flex; gap: 6px; align-items: center; }
 .checklist ul { list-style: none; margin: 0; padding: 0; }
@@ -433,4 +465,111 @@ abbr.term:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-
   .chapter { min-height: 0; break-before: page; }
   .chapter .chart path.draw { stroke-dashoffset: 0 !important; animation: none !important; }
   .chapter .chart .anno { opacity: 1 !important; }
+}
+
+/* ==========================================================================
+   Hai Robotics brand layer
+   Flat colour blocks with square corners (radius-none), no shadows; CTAs are
+   the only rounded element (radius-pill). Hai Blue leads, Safety Orange is the
+   one accent. Open Sans throughout.
+   ========================================================================== */
+
+/* Rounded corners (a deliberate departure from the brand book's square blocks).
+   One scale: panels 12px, chips/tags/inputs 8px, small marks 4px. */
+:root { --radius-lg: 12px; --radius-md: 8px; --radius-sm: 4px; }
+.card, .tile, .viz-card, .checklist, .ask-box, .elim, .params div, .how-to, .coming,
+.drop-inner, .drag-overlay > div, .tooltip, .toast, pre { border-radius: var(--radius-lg) !important; }
+.badge, .count-chip, .pip-row, .role-item, .role-item select, .controls select, .inline-select select,
+.tab, .section-nav a, .rail li a { border-radius: var(--radius-md) !important; }
+.pip, table.heat td.cell, .mini-bar, .pct-bar, .pct-fill, .meter, .meter span { border-radius: var(--radius-sm) !important; }
+.seg:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm) !important; }
+.seg:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important; }
+.seg:only-child { border-radius: var(--radius-sm) !important; }
+.mini-bar { border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important; }
+.tab.active { border-radius: var(--radius-md) var(--radius-md) 0 0 !important; }
+/* Panels with a coloured left edge keep it inside the rounded shape. */
+.how-to { border-left: 0 !important; box-shadow: inset 3px 0 0 var(--accent) !important; }
+.pip-row.warn { border-left: 0; box-shadow: inset 3px 0 0 var(--status-warning); }
+.pip-row.bad { border-left: 0; box-shadow: inset 3px 0 0 var(--status-critical); }
+.card, .tile, .viz-card, .checklist, .ask-box, .elim, .tab.active, .seg-toggle button.on { box-shadow: none !important; }
+
+/* CTAs: pills. Primary = hai-blue fill, white label; secondary = outlined pill. */
+.btn {
+  border-radius: 9999px; padding: 6px 16px; font-weight: 500; font-size: 13px;
+  border: 1px solid var(--ink-2); background: transparent; color: var(--ink);
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--hai-blue); border-color: var(--hai-blue); color: #FFFFFF; }
+.btn.primary:hover { background: var(--darker-blue); border-color: var(--darker-blue); }
+:root[data-theme="dark"] .btn.primary { background: var(--hai-blue); color: #FFFFFF; }
+.btn.icon { width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; }
+.btn.small { padding: 3px 12px; font-size: 12px; }
+
+/* Top bar: logo top-left (functional placement for an app), flat, hairline below. */
+.topbar { background: var(--page); backdrop-filter: none; border-bottom: 1px solid var(--border); padding: 12px 24px; }
+.brand { gap: 14px; font-weight: 600; font-size: 14px; }
+.brand-logo { height: 15px; width: auto; display: block; }
+.brand-logo.reverse { display: none; }
+.brand-sep { width: 1px; height: 20px; background: var(--border); }
+.brand-name { color: var(--ink); letter-spacing: .02em; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-logo.full { display: none; }
+  :root:not([data-theme="light"]) .brand-logo.reverse { display: block; }
+}
+:root[data-theme="dark"] .brand-logo.full { display: none; }
+:root[data-theme="dark"] .brand-logo.reverse { display: block; }
+
+/* Report tabs: flat, active tab marked with a hai-blue underline. */
+.tab { border: 0; border-bottom: 2px solid transparent; padding: 6px 10px 6px 12px; background: none; }
+.tab.active { background: none; border-color: transparent; border-bottom-color: var(--accent); color: var(--ink); }
+.tab.compare { color: var(--accent); font-weight: 600; }
+
+/* View toggle: pill, as a CTA. */
+.seg-toggle { border-radius: 9999px; background: transparent; border: 1px solid var(--ink-2); padding: 2px; }
+.seg-toggle button { border-radius: 9999px; padding: 6px 16px; font-weight: 500; }
+.seg-toggle button.on { background: var(--hai-blue); color: #FFFFFF; }
+
+/* Typography: uppercase only for small section labels. */
+.eyebrow, .side-h, .compare-table tr.group th, .tile-label, .viz-card h4, .checklist h4, .ask-box h4 {
+  text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; font-weight: 600;
+}
+.eyebrow { color: var(--accent); }
+.viz-card h4, .checklist h4, .ask-box h4, .tile-label, .side-h { color: var(--muted); }
+.viz-card h4 abbr.term { text-transform: none; letter-spacing: 0; }
+.question { font-weight: 600; font-size: 30px; letter-spacing: -0.01em; }
+.answer { font-weight: 300; font-size: 18px; color: var(--ink); }
+.report-head h1 { font-weight: 600; font-size: 28px; }
+.tile-value { font-weight: 600; letter-spacing: 0; }
+.card h2 { font-size: 18px; }
+.meta, .card-sub { color: var(--muted); }
+
+/* Panels */
+.how-to { background: var(--surface-2); border: 0; border-left: 3px solid var(--accent); }
+.how-icon { background: var(--accent); border-radius: 50%; }
+:root[data-theme="dark"] .how-to { color: var(--ink-2); }
+.why { border-left-color: var(--safety-orange); }
+.drop-inner { border: 1px solid var(--border); background: var(--surface-2); }
+.drag-overlay { background: color-mix(in srgb, var(--hai-blue) 14%, transparent); border-color: var(--hai-blue); color: var(--hai-blue); }
+.coming { border-style: dashed; }
+
+/* Walkthrough rail: numbered circles in hai-blue when active. */
+.rail .dot { border-width: 2px; }
+.rail a.active .rail-q { color: var(--accent); }
+
+/* Charts follow the brand order (hai-blue, safety-orange, black-3c, greys). */
+.ramp { background: linear-gradient(90deg, #F0F3FF, #A8B2FF, #575FFF, #2E31FA, #04068B); }
+.mini-bar { background: var(--series-1); }
+.chart .median { stroke: var(--ink); }
+.seg.exch { background: var(--safety-orange); color: #000000; }   /* on-highlight */
+.seg.wait { background: var(--hai-blue); }
+.pip.both { background: var(--series-1); }
+.pip.extra { background: var(--safety-orange); }
+.elim.is-limit { border-color: var(--safety-orange); box-shadow: inset 3px 0 0 var(--safety-orange) !important; }
+
+/* Dark style: block panels on black use steel grey borders. */
+:root[data-theme="dark"] .how-to,
+:root[data-theme="dark"] .drop-inner { background: #04068B; color: #E6E6E6; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .how-to,
+  :root:not([data-theme="light"]) .drop-inner { background: #04068B; color: #E6E6E6; }
 }
