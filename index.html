@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulation Results</title>
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body class="empty">
+  <div class="topbar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Simulation Results</div>
+    <div id="tabs" class="tabs" role="tablist"></div>
+    <div class="actions">
+      <button id="add" class="btn">+ Add report</button>
+      <button id="theme" class="btn icon" title="Toggle light/dark" aria-label="Toggle light or dark theme">◐</button>
+      <button id="print" class="btn icon" title="Print / save as PDF" aria-label="Print or save as PDF">⎙</button>
+    </div>
+  </div>
+
+  <main>
+    <section class="dropzone">
+      <div class="drop-inner">
+        <h1>Simulation Results</h1>
+        <p>Drop one or more <b>DP Simulation Report</b> HTML exports here (or extracted <code>.json</code>). Load several, such as Average and Peak, to compare them.</p>
+        <div class="drop-actions">
+          <button id="pick" class="btn primary">Choose files…</button>
+          <button id="sample" class="btn">Load local sample</button>
+        </div>
+        <p class="muted small">Everything runs locally in your browser. Nothing is uploaded.</p>
+      </div>
+    </section>
+    <div id="view"></div>
+  </main>
+
+  <div class="drag-overlay"><div>Drop report files to add them</div></div>
+  <div id="toast" class="toast" role="alert"></div>
+  <input id="file" type="file" accept=".html,.htm,.json" multiple hidden />
+
+  <script src="samples/sample-reports.js" onerror="window.SIMRES_SAMPLES=null"></script>
+  <script src="src/parser.js"></script>
+  <script src="src/analysis.js"></script>
+  <!-- Optional, git-ignored: confidential project profiles (see src/profiles.js). -->
+  <script src="src/profiles.local.js" onerror="window.SIMRES_LOCAL_PROFILES=null"></script>
+  <script src="src/profiles.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/walkthrough.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

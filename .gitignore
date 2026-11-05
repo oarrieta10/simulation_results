@@ -1,0 +1,17 @@
+# Confidential customer material: keep local, never commit.
+src/profiles.local.js
+samples/*
+!samples/README.md
+*.html.json
+extracted/
+
+# Raw report exports dropped into the folder by accident
+/*.html
+!/index.html
+
+# Local tooling
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
