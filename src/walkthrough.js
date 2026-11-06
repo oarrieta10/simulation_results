@@ -123,19 +123,30 @@
         checks.push({
           level: 'warning', title: `${x.process.name} station count`,
           text: `<b>${x.stationsSim}</b> in the simulation vs <b>${x.stationsDesign}</b> in the design. ${more ? 'Extra stations add capacity, so the result may look better than the design would deliver.' : 'Fewer stations than designed: this process is tested with less capacity than proposed.'}`,
-          ask: `${x.process.name}: the simulation has ${x.stationsSim} stations but the proposal specifies ${x.stationsDesign}. Is that intentional, or are some stations modelled under a different process?`,
+          ask: `${x.process.name}: the simulation has ${x.stationsSim} station${x.stationsSim === 1 ? '' : 's'} but the design inputs specify ${x.stationsDesign}. Is that intentional, or are some stations modelled under a different process?`,
         });
       });
     }
-    // Simulated total cycle vs the design's theoretical cycle (wait + switch), saturated processes only.
+    /* Simulated total cycle vs the planned cycle. The design builds a buffer on top of wait + switch,
+       so running slower than theoretical is expected; only a cycle past the planned one (buffer
+       fully used) is a problem worth raising. Saturated processes only. */
     if (d) {
-      const slow = cycleRows(r).filter((c) => c.saturated && c.designWait && c.designSwitch && c.cycle - (c.designWait + c.designSwitch) >= 0.5);
-      if (slow.length) {
-        const th = (c) => c.designWait + c.designSwitch;
+      const rows = cycleRows(r).filter((c) => c.saturated && c.allowed);
+      const over = rows.filter((c) => c.buffer < -0.05);
+      const within = rows.filter((c) => c.buffer >= -0.05);
+      const th = (c) => (c.designWait && c.designSwitch ? c.designWait + c.designSwitch : 0);
+      const used = (c) => (th(c) && c.designBuffer > 0 ? Math.max(0, c.cycle - th(c)) / c.designBuffer : 0);
+      if (over.length) {
         checks.push({
-          level: slow.some((c) => c.buffer < -0.05) ? 'critical' : 'warning', title: 'Simulated cycle slower than design theoretical',
-          text: slow.map((c) => `<b>${ctx.esc(c.name)}</b>: ${fmt(c.cycle, 1)} s per tote vs ${fmt(th(c), 1)} s theoretical (${fmt(c.designWait, 1)} s wait + ${fmt(c.designSwitch, 1)} s switch), +${fmt(c.cycle - th(c), 1)} s, ${c.buffer >= 0 ? `leaving ${fmt(c.buffer, 1)} s of the ${fmt(c.designBuffer, 1)} s buffer` : `${fmt(-c.buffer, 1)} s over the planned cycle`}`).join('; ') + ' (step 5).',
-          ask: `${slow.map((c) => `${c.name} cycles at ${fmt(c.cycle, 1)} s per tote in the simulation vs ${fmt(th(c), 1)} s (${fmt(c.designWait, 1)} s wait + ${fmt(c.designSwitch, 1)} s switch) in the design inputs`).join('; ')}. What adds the extra time in the simulation?`,
+          level: 'critical', title: 'Simulated cycle longer than planned',
+          text: over.map((c) => `<b>${ctx.esc(c.name)}</b>: ${fmt(c.cycle, 1)} s per tote vs the ${fmt(c.allowed, 1)} s planned cycle (${fmt(c.tph)}/h), ${fmt(-c.buffer, 1)} s over${th(c) ? `, so the whole ${fmt(c.designBuffer, 1)} s buffer is used` : ''}`).join('; ') + ' (step 5).',
+          ask: `${over.map((c) => `${c.name} cycles at ${fmt(c.cycle, 1)} s per tote in the simulation, longer than the ${fmt(c.allowed, 1)} s planned cycle${th(c) ? ` (${fmt(c.designWait, 1)} s wait + ${fmt(c.designSwitch, 1)} s switch + ${fmt(c.designBuffer, 1)} s buffer)` : ''}`).join('; ')}. What is taking the extra time in the simulation?`,
+        });
+      }
+      if (within.length) {
+        checks.push({
+          level: 'good', title: 'Simulated cycle within the planned cycle',
+          text: within.map((c) => `<b>${ctx.esc(c.name)}</b>: ${fmt(c.cycle, 1)} s per tote vs ${fmt(c.allowed, 1)} s planned${th(c) && c.cycle > th(c) + 0.05 ? `, using ${fmt(c.cycle - th(c), 1)} s of the ${fmt(c.designBuffer, 1)} s design buffer (${pct(used(c))})` : ''}, ${fmt(c.buffer, 1)} s to spare`).join('; ') + ' (step 5).',
         });
       }
     }
@@ -306,12 +317,18 @@
             // The comparison: simulated total cycle vs the design's theoretical cycle, and vs the plan.
             const dCyc = c.saturated && theo ? c.cycle - theo : null;
             const vsPlan = left >= -0.05 ? `still faster than the planned ${fmt(c.tph)}/h, with ${s1(Math.max(0, left))} to spare` : `<b>slower than the planned ${fmt(c.tph)}/h</b> by ${s1(-left)} per tote`;
-            const lvl = dCyc === null ? '' : left < -0.05 ? 'bad' : Math.abs(dCyc) < 0.3 ? 'ok' : 'warn';
+            // Running slower than theoretical is what the buffer is for: only an overrun of the plan is bad.
+            const lvl = dCyc === null ? '' : left < -0.05 ? 'bad' : 'ok';
+            const bufUsed = dCyc !== null && dCyc > 0.05 && c.designBuffer > 0 ? Math.min(dCyc, c.designBuffer) : 0;
             const notes = [
               dCyc !== null
-                ? `<span class="${lvl === 'ok' ? 'cyc-ok' : 'cyc-warn'}"><span class="cc-icon mini ${lvl}" aria-hidden="true">${lvl === 'ok' ? '✓' : lvl === 'bad' ? '✕' : '!'}</span>${Math.abs(dCyc) < 0.3
-                  ? `Simulated ${s1(c.cycle)} per tote matches the ${s1(theo)} design theoretical; ${vsPlan}.`
-                  : `Simulated ${s1(c.cycle)} per tote vs ${s1(theo)} design theoretical (${dCyc > 0 ? '+' : '−'}${s1(Math.abs(dCyc))}, ${pct(Math.abs(dCyc) / theo)} ${dCyc > 0 ? 'slower' : 'faster'}), so ${rateTxt(c.cycle)} instead of ${rateTxt(theo)}; ${vsPlan}.`}</span>`
+                ? `<span class="${lvl === 'ok' ? 'cyc-ok' : 'cyc-warn'}"><span class="cc-icon mini ${lvl}" aria-hidden="true">${lvl === 'ok' ? '✓' : '✕'}</span>${left < -0.05
+                  ? `Simulated ${s1(c.cycle)} per tote is longer than the ${s1(c.allowed)} planned cycle: the ${s1(c.designBuffer)} design buffer is used up and the run is ${s1(-left)} over, so ${rateTxt(c.cycle)} instead of the planned ${fmt(c.tph)}/h.`
+                  : Math.abs(dCyc) < 0.3
+                    ? `Simulated ${s1(c.cycle)} per tote matches the ${s1(theo)} design theoretical; ${vsPlan}.`
+                    : dCyc > 0
+                      ? `Simulated ${s1(c.cycle)} per tote, within the ${s1(c.allowed)} planned cycle: ${s1(bufUsed)} of the ${s1(c.designBuffer)} design buffer used (${pct(bufUsed / c.designBuffer)}), ${s1(left)} to spare. ${rateTxt(c.cycle)} vs ${rateTxt(theo)} theoretical and ${fmt(c.tph)}/h planned.`
+                      : `Simulated ${s1(c.cycle)} per tote, ${s1(-dCyc)} faster than the ${s1(theo)} design theoretical; the full ${s1(c.designBuffer)} buffer is untouched.`}</span>`
                 : '',
               !c.saturated ? `<span>Demand-limited: ${c.stations} station${c.stations > 1 ? 's' : ''} at ${fmt(c.rate)}/h, a tote about every ${s1(c.cycle)}. The stations never filled up, so this is how often work arrived, not their capacity, and it can't be compared with the theoretical cycle.</span>` : '',
               hasDesign && !c.designSwitch ? '<span>No switch time in the design inputs for this flow, so there is no theoretical cycle to compare with.</span>' : '',
