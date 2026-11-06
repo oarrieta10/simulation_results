@@ -98,9 +98,17 @@
       text: `${fmt(r.durationH, 1)} h simulated, ${ctx.tz(r.start)} → ${ctx.tz(r.end)} (UTC${r.tz}). Rates are averaged over this whole window, including the first and last hours.`,
     });
     if (!d) {
-      checks.push({ level: 'warning', title: 'Design basis', text: 'None selected. Pick one under Design targets so the run can be checked against the proposal.', ask: null });
+      checks.push({
+        level: 'warning', title: 'Design basis',
+        text: `None yet, so this run can't be checked against its design. Paste the design inputs from the Customer Success Tool.<span class="check-actions"><button class="btn small primary" type="button" data-paste-design>Paste design inputs</button><button class="btn small" type="button" data-import-design>Import file…</button></span>`,
+      });
     } else {
-      checks.push({ level: 'good', title: 'Design basis', text: `${d.profile.name}: ${d.profile.source}.` });
+      checks.push({
+        level: d.profile.example ? 'warning' : 'good', title: 'Design basis',
+        text: d.profile.example ? 'Only the illustrative example is selected. Import the project\'s design inputs to get real targets.'
+          : d.profile.imported ? `Design inputs <b>${ctx.esc(d.profile.profileName)}</b> from ${ctx.esc(d.profile.source)}, matched automatically to this report.`
+            : `${ctx.esc(d.profile.name)}: ${ctx.esc(d.profile.source)}.`,
+      });
       const ov = Object.keys(r.roleOverrides || {}).length;
       const un = d.unassigned.reduce((n, g) => n + g.count, 0);
       checks.push({
@@ -214,10 +222,12 @@
       series[0].name = 'Each station';
       C.hourly(v, {
         labels, height: 280, tipTitle: (i) => `Hour ${r.hours[i]}`,
-        yMax: Math.ceil(Math.max(waitOnly, L.steadyMedian) * 1.15 / 50) * 50,
+        yMax: Math.ceil(Math.max(waitOnly, L.steadyMedian, (L.process && L.process.maxRate) || 0, (L.process && L.process.stationRate) || 0) * 1.12 / 50) * 50,
         series,
         refs: [
-          ...(waitOnly ? [{ value: waitOnly, label: `If wait time were the only delay: ${fmt(waitOnly)}/h (${fmt(wait)} s)`, tone: 'faint' }] : []),
+          ...(L.process && L.process.maxRate ? [{ value: L.process.maxRate, label: `Workstation max: ${fmt(L.process.maxRate)}/h (${L.process.note || 'design inputs'})`, tone: 'faint' }] : []),
+          ...(waitOnly && !(L.process && L.process.maxRate && Math.abs(L.process.maxRate - waitOnly) < 15) ? [{ value: waitOnly, label: `If wait time were the only delay: ${fmt(waitOnly)}/h (${fmt(wait)} s)`, tone: 'faint', below: true }] : []),
+          ...(L.process && L.process.stationRate ? [{ value: L.process.stationRate, label: `Design rate per station: ${fmt(L.process.stationRate)}/h`, below: true }] : []),
         ],
         annotations: [
           { i: Math.min(peakI, r.hours.length - 1), value: medianLine[Math.min(peakI, r.hours.length - 1)], text: `Still ${fmt(medianLine[peakI])}/h here, with\n${fmt(k.peakOpenOut)} tasks waiting`, dx: peakI > r.hours.length / 2 ? -18 : 18, dy: 54, anchor: peakI > r.hours.length / 2 ? 'end' : 'start' },
@@ -242,7 +252,7 @@
           <div class="cycle-row"><span class="cycle-label">Simulated</span><div class="cycle-bar">
             ${wait ? `<span class="seg wait" style="width:${w(wait)}">${fmt(wait)} s</span><span class="seg exch" style="width:${w(Math.max(0, exch))}">${fmt(exch, 1)} s</span>` : `<span class="seg wait" style="width:${w(cyc)}">${fmt(cyc, 1)} s</span>`}
           </div><span class="cycle-total">${fmt(cyc, 1)} s = ${fmt(L.steadyMedian)}/h</span></div>
-          ${wait ? `<div class="pip-legend cycle-legend"><span><i class="pip both"></i> ${term('wait time')}: operator picking, set by the proposal</span><span><i class="pip extra"></i> ${term('tote exchange')}: swapping to the next tote</span></div>` : ''}
+          ${wait ? `<div class="pip-legend cycle-legend"><span><i class="pip both"></i> ${term('wait time')}: operator picking, ${L.process && L.process.wait ? 'from the design' : 'from the report\'s handling-time parameter'}</span><span><i class="pip extra"></i> ${term('tote exchange')}: swapping to the next tote</span></div>` : ''}
           ${needCycle ? `<div class="cycle-row"><span class="cycle-label">Needed for target</span><div class="cycle-bar"><span class="seg need" style="width:${w(needCycle)}">${fmt(main.perStationTarget)}/h per station</span></div><span class="cycle-total">${fmt(needCycle, 1)} s</span></div>
           <p class="cycle-note">The simulated cycle is <b>${fmt(needCycle - cyc, 1)} s shorter</b> than the ${fmt(needCycle, 1)} s each station can take and still hit ${fmt(main.process.target)}/h with the design's ${main.stationsDesign} stations, so the target holds with about ${pct(needCycle / cyc - 1)} to spare.</p>` : ''}`;
         howTo(left, [

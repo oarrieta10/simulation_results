@@ -12,18 +12,138 @@
   const SERIES = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => cssVar(`series-${i}`));
 
   // ---------------- loading ----------------
+  // Files are sorted by content: design inputs JSON (Customer Success Tool export) is
+  // imported first, so reports dropped in the same batch are matched against it.
   async function loadFiles(files) {
-    const errors = [];
+    const errors = [], notes = [];
+    const items = [];
     for (const file of files) {
       try {
         const text = await file.text();
-        parseText(text, file.name).forEach(addReport);
-      } catch (e) {
-        errors.push(`${file.name}: ${e.message}`);
-      }
+        let json = null;
+        if (/^\s*[[{]/.test(text)) { try { json = JSON.parse(text); } catch (_) { /* parser reports it */ } }
+        items.push({ file, text, design: !!(json && window.SimProfiles.isDesignInputs(json)), json });
+      } catch (e) { errors.push(`${file.name}: ${e.message}`); }
     }
+    items.filter((x) => x.design).forEach(({ file, json }) => {
+      try { notes.push(importDesignInputs(json, file.name)); } catch (e) { errors.push(`${file.name}: ${e.message}`); }
+    });
+    items.filter((x) => !x.design).forEach(({ file, text }) => {
+      try { parseText(text, file.name).forEach(addReport); } catch (e) { errors.push(`${file.name}: ${e.message}`); }
+    });
     if (errors.length) toast(errors.join('<br>'), true);
+    else if (notes.length) toast(notes.join('<br>'));
     render();
+  }
+
+  // ---------------- design inputs ----------------
+  function importDesignInputs(json, fileName, persist = true) {
+    const P = window.SimProfiles;
+    const stem = String(fileName).replace(/\.json$/i, '');
+    const profs = P.fromDesignInputs(json, fileName);
+    if (!profs.length) throw new Error('No scenario profiles with demand were found in this design inputs file.');
+    P.unregister(`di:${stem}:`);
+    P.register(profs);
+    if (persist) {
+      const list = (store.get('design-inputs') || []).filter((x) => x.fileName !== fileName);
+      list.push({ fileName, importedAt: new Date().toISOString(), json });
+      store.set('design-inputs', list);
+      // A fresh import should take effect: forget earlier per-report choices and re-match.
+      state.reports.forEach((r) => { store.set(`profile:${r.reportCode}`, undefined); applyProfile(r); });
+    }
+    const matched = state.reports.filter((r) => r.profile && profs.includes(r.profile)).map((r) => `${esc(r.label)} → ${esc(r.profile.profileName)}`);
+    return `Imported design inputs <b>${esc(stem)}</b>: ${profs.map((p) => esc(p.profileName)).join(', ')}.${matched.length ? ` Matched ${matched.join('; ')}.` : ''}`;
+  }
+
+  function removeDesignInputs(fileName) {
+    const stem = String(fileName).replace(/\.json$/i, '');
+    window.SimProfiles.unregister(`di:${stem}:`);
+    store.set('design-inputs', (store.get('design-inputs') || []).filter((x) => x.fileName !== fileName));
+    state.reports.forEach((r) => {
+      if (r.profile && String(r.profile.id).startsWith(`di:${stem}:`)) store.set(`profile:${r.reportCode}`, undefined);
+      applyProfile(r);
+    });
+    render();
+  }
+
+  // ---------------- paste design inputs ----------------
+  function checkDesignText(text) {
+    const t = String(text || '').trim();
+    if (!t) return { ok: false, msg: '' };
+    let json;
+    try { json = JSON.parse(t); } catch (e) {
+      return { ok: false, level: 'critical', msg: `This isn't valid JSON: ${esc(e.message)}. Make sure you copied the whole export, from the first { to the last }.` };
+    }
+    if (!window.SimProfiles.isDesignInputs(json)) {
+      return { ok: false, level: 'critical', msg: 'This is JSON, but not design inputs: it needs <code>workstationTypes</code>, <code>requirements</code> and <code>scenarios</code>. If it\'s a simulation report, load it under step 2 instead.' };
+    }
+    const profs = window.SimProfiles.fromDesignInputs(json, 'x');
+    if (!profs.length) return { ok: false, level: 'warning', msg: 'Design inputs recognised, but no scenario profile has any demand.' };
+    const flows = json.requirements.length;
+    return {
+      ok: true, json, level: 'good',
+      msg: `Design inputs recognised${json.tool ? ` (${esc(json.tool)})` : ''}: ${profs.length} profile${profs.length > 1 ? 's' : ''} (${profs.map((p) => `<b>${esc(p.profileName)}</b>, ${p.processes.length} flow${p.processes.length > 1 ? 's' : ''}`).join('; ')}) from ${flows} defined flows and ${json.workstationTypes.length} workstation types.`,
+    };
+  }
+
+  function uniqueDesignName(base) {
+    const names = new Set((store.get('design-inputs') || []).map((x) => String(x.fileName).replace(/\.json$/i, '')));
+    if (!names.has(base)) return base;
+    let i = 2;
+    while (names.has(`${base} (${i})`)) i++;
+    return `${base} (${i})`;
+  }
+
+  function openPasteDialog(prefill) {
+    const dlg = $('#paste-dialog'), ta = $('#paste-text'), nm = $('#paste-name'), chk = $('#paste-check'), ok = $('#paste-ok');
+    ta.value = prefill || '';
+    nm.value = uniqueDesignName('Design inputs');
+    const update = () => {
+      const r = checkDesignText(ta.value);
+      chk.className = `paste-check ${r.level || ''}`;
+      chk.innerHTML = r.msg ? `<span class="cc-icon mini ${r.ok ? 'ok' : r.level === 'warning' ? 'warn' : 'bad'}" aria-hidden="true">${r.ok ? '✓' : r.level === 'warning' ? '!' : '✕'}</span><span>${r.msg}</span>` : '';
+      ok.disabled = !r.ok || !nm.value.trim();
+      return r;
+    };
+    ta.oninput = update; nm.oninput = update;
+    nm.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!ok.disabled) dlg.close('ok'); } };
+    dlg.onclose = () => {
+      if (dlg.returnValue !== 'ok') return;
+      const r = update();
+      if (!r.ok) return;
+      try {
+        const note = importDesignInputs(r.json, nm.value.trim());
+        toast(note);
+      } catch (e) { toast(esc(e.message), true); }
+      render();
+    };
+    dlg.returnValue = '';
+    dlg.showModal();
+    update();
+    (prefill ? nm : ta).focus();
+    if (prefill) nm.select();
+  }
+
+  // Start screen, step 1: what's imported so far.
+  function renderStartStatus() {
+    const box = $('#start-design-status');
+    if (!box) return;
+    const list = store.get('design-inputs') || [];
+    const P = window.SimProfiles;
+    box.innerHTML = list.map((x) => {
+      const stem = String(x.fileName).replace(/\.json$/i, '');
+      const profs = P.PROFILES.filter((p) => String(p.id).startsWith(`di:${stem}:`));
+      return `<span class="import-item"><span class="cc-icon mini ok" aria-hidden="true">✓</span><b>${esc(x.fileName)}</b><span class="muted">${profs.map((p) => esc(p.profileName)).join(' · ')}</span><button class="link-btn" type="button" data-remove-design="${esc(x.fileName)}">Remove</button></span>`;
+    }).join('');
+    box.querySelectorAll('[data-remove-design]').forEach((b) => b.addEventListener('click', () => { removeDesignInputs(b.dataset.removeDesign); renderStartStatus(); }));
+    const li = $('#start-design');
+    if (li) li.classList.toggle('done', list.length > 0);
+  }
+
+  function restoreDesignInputs() {
+    (store.get('design-inputs') || []).forEach((x) => {
+      try { importDesignInputs(x.json, x.fileName, false); } catch (_) { /* skip a bad entry */ }
+    });
   }
 
   // Per-viewer memory of profile choice and manual role overrides, keyed by report code.
@@ -35,7 +155,10 @@
   // id: undefined = remembered choice or best suggestion; 'none' = no design basis.
   function applyProfile(m, id) {
     const P = window.SimProfiles;
-    if (id === undefined) id = store.get(`profile:${m.reportCode}`) ?? (P.suggest(m)?.id || 'none');
+    if (id === undefined) {
+      id = store.get(`profile:${m.reportCode}`);
+      if (id !== 'none' && !P.get(id)) id = P.suggest(m)?.id || 'none'; // remembered one was removed
+    }
     m.profile = id === 'none' ? null : P.get(id);
     m.autoRoles = m.profile ? P.assignRoles(m, m.profile) : {};
     m.roleOverrides = (m.profile && store.get(`roles:${m.reportCode}:${m.profile.id}`)) || {};
@@ -69,6 +192,7 @@
   function render() {
     const has = state.reports.length > 0;
     document.body.classList.toggle('empty', !has);
+    renderStartStatus();
     (state.teardown || []).forEach((f) => f());
     state.teardown = [];
     const view = $('#view');
@@ -269,9 +393,14 @@
     const sec = el(view, 'section', 'card', 's-design');
     const opts = [`<option value="none" ${!r.profile ? 'selected' : ''}>None</option>`,
       ...P.PROFILES.map((p) => `<option value="${esc(p.id)}" ${r.profile && r.profile.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`)].join('');
+    const imports = store.get('design-inputs') || [];
     sec.innerHTML = `<div class="card-head"><div><h2>Design targets</h2>
-        <p class="card-sub">${d ? `Checked against ${esc(d.profile.source)}. Stations are matched to processes by throughput; you can change any of them below.` : 'Choose a design basis to check this run against contractual workstation targets.'}</p></div>
-        <label class="inline-select">Design basis <select id="profile-select">${opts}</select></label></div>`;
+        <p class="card-sub">${d ? `Checked against ${esc(d.profile.source)}. Stations are matched to processes by throughput; you can change any of them below.` : 'Import the design inputs JSON from the Customer Success Tool to check this run against its design throughput.'}</p></div>
+        <div class="design-actions"><label class="inline-select">Design basis <select id="profile-select">${opts}</select></label>
+        <button class="btn ${imports.length ? 'small' : 'primary'}" type="button" data-paste-design>Paste design inputs</button>
+        <button class="btn ${imports.length ? 'small' : ''}" type="button" data-import-design>Import file…</button></div></div>
+        ${imports.length ? `<div class="import-list">${imports.map((x) => `<span class="import-item"><span class="cc-icon mini ok" aria-hidden="true">✓</span><b>${esc(x.fileName)}</b><span class="muted">imported ${esc(String(x.importedAt).slice(0, 10))}</span><button class="link-btn" type="button" data-remove-design="${esc(x.fileName)}">Remove</button></span>`).join('')}</div>` : ''}`;
+    sec.querySelectorAll('[data-remove-design]').forEach((b) => b.addEventListener('click', () => removeDesignInputs(b.dataset.removeDesign)));
     sec.querySelector('#profile-select').addEventListener('change', (e) => {
       store.set(`profile:${r.reportCode}`, e.target.value);
       applyProfile(r, e.target.value);
@@ -306,6 +435,24 @@
         <td class="left">${statusCell(x)}</td>
       </tr>`).join('')}</tbody></table></div>
       <p class="muted small">Simulated = tote presentations completed ÷ simulated hours. Released = simulated plus work still open at the end. Capacity is shown only where the stations hit a shared ceiling. "Not proven" = the stations had spare capacity, but the run didn't release enough work to reach the target.</p>`);
+
+    // The sizing inputs behind each target (imported design inputs only).
+    if (d.profile.imported) {
+      const n = (v, dd = 0) => (v ? fmt(v, dd) : '–');
+      const det = document.createElement('details');
+      det.className = 'data-block';
+      det.innerHTML = `<summary><span>Design inputs</span><span class="muted">${esc(d.profile.source)}</span></summary>
+        <div class="table-wrap"><table class="data design-table"><thead><tr>
+          <th class="left">Process</th><th class="left">Direction</th><th class="left">Workstation type</th><th>Demand<br><span class="muted">per h</span></th>
+          <th>Stations</th><th>Design rate<br><span class="muted">per station</span></th><th>Simulated<br><span class="muted">per station</span></th><th>Station max<br><span class="muted">per h</span></th>
+          <th>Effective<br><span class="muted">hours</span></th><th>Lines<br><span class="muted">per order</span></th><th>Units<br><span class="muted">per line</span></th><th>Hit rate</th></tr></thead>
+        <tbody>${d.rows.map((x) => { const p = x.process, i = p.inputs || {}; return `<tr>
+          <th class="left">${esc(p.name)}</th><td class="left muted">${esc(p.direction)}</td><td class="left muted">${esc(p.note)} · ${esc(p.cycle)}</td>
+          <td>${n(p.target)}</td><td>${n(p.stations)}</td><td>${n(p.stationRate)}</td>
+          <td><b>${x.group ? fmt(x.perStationActual) : '–'}</b></td><td>${n(p.maxRate)}</td>
+          <td>${n(i.effectiveHours, 1)}</td><td>${n(i.linesPerOrder, 2)}</td><td>${n(i.unitsPerLine, 2)}</td><td>${i.hitRate ? pct(i.hitRate) : '–'}</td></tr>`; }).join('')}</tbody></table></div>`;
+      sec.appendChild(det);
+    }
 
     // Role editor
     const procOpts = (code) => {
@@ -679,6 +826,27 @@
       render();
     });
     new MutationObserver(() => $('#tabs').querySelectorAll('.tab:not(.compare)').forEach((t) => t.setAttribute('draggable', 'true'))).observe($('#tabs'), { childList: true });
+
+    // Design inputs: any [data-import-design] button opens the JSON picker.
+    restoreDesignInputs();
+    const designInput = $('#design-file');
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-import-design]')) { e.preventDefault(); designInput.click(); }
+      if (e.target.closest('[data-paste-design]')) { e.preventDefault(); openPasteDialog(); }
+    });
+    // Shortcut: Ctrl+V anywhere (outside a text field) with design inputs on the clipboard.
+    document.addEventListener('paste', (e) => {
+      if ($('#paste-dialog').open) return;
+      const tgt = e.target;
+      if (tgt && (/^(INPUT|TEXTAREA|SELECT)$/.test(tgt.tagName) || tgt.isContentEditable)) return;
+      const text = e.clipboardData && e.clipboardData.getData('text');
+      if (!text || !/^\s*\{/.test(text)) return;
+      try { if (!window.SimProfiles.isDesignInputs(JSON.parse(text))) return; } catch (_) { return; }
+      e.preventDefault();
+      openPasteDialog(text);
+    });
+    designInput.addEventListener('change', () => { loadFiles([...designInput.files]); designInput.value = ''; });
+    renderStartStatus();
 
     // Drag & drop files anywhere.
     let depth = 0;

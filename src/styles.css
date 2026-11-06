@@ -573,3 +573,51 @@ abbr.term:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-
   :root:not([data-theme="light"]) .how-to,
   :root:not([data-theme="light"]) .drop-inner { background: #04068B; color: #E6E6E6; }
 }
+
+/* ---------- design inputs import ---------- */
+.drop-inner { max-width: 680px; text-align: left; }
+.drop-inner > h1, .drop-inner > p { text-align: center; }
+.start-steps { list-style: none; margin: 22px 0 10px; padding: 0; display: grid; gap: 12px; }
+.start-steps > li { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.start-steps h2 { font-size: 16px; margin: 4px 0 4px; }
+.start-steps p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.start-steps .drop-actions { justify-content: flex-start; margin: 12px 0 0; }
+.start-num { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; background: var(--hai-blue); }
+.start-steps > li.done .start-num { background: var(--status-good); }
+.start-steps > li.done .start-num::after { content: "✓"; position: absolute; }
+.start-steps > li.done .start-num { color: transparent; position: relative; }
+.start-steps > li.done .start-num::after { color: #fff; }
+.start-status { display: grid; gap: 6px; margin-top: 10px; }
+.import-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 14px; }
+.import-item { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 10px 5px 6px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.link-btn { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0 2px; font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.link-btn:hover { color: var(--ink); }
+.design-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.checklist li p .btn { margin-top: 6px; display: inline-flex; }
+
+/* ---------- paste design inputs dialog ---------- */
+#paste-dialog {
+  width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); background: var(--surface); color: var(--ink);
+}
+#paste-dialog::backdrop { background: rgba(4, 6, 139, 0.28); backdrop-filter: blur(2px); }
+.paste-form { display: grid; gap: 14px; padding: 22px 24px; }
+.paste-form h2 { font-size: 20px; }
+.paste-form > p { margin: -8px 0 0; }
+.field { display: grid; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.field input, .field textarea {
+  font: 400 13px/1.45 var(--font); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--axis); border-radius: var(--radius-md); padding: 8px 10px; width: 100%;
+}
+.field textarea { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; resize: vertical; min-height: 200px; }
+.field input:focus, .field textarea:focus { outline: 2px solid var(--focus); outline-offset: 1px; border-color: transparent; }
+.field-hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+.paste-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--ink-2); min-height: 20px; }
+.paste-check:empty { display: none; }
+.paste-check .cc-icon { margin-top: 1px; }
+.paste-check.good { color: var(--ink); }
+.paste-check.critical span:last-child { color: var(--bad-text); }
+.paste-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.paste-actions .btn.primary:disabled { opacity: .45; cursor: not-allowed; }
+.check-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.check-actions .btn { margin: 0; }

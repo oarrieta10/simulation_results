@@ -49,31 +49,32 @@ Steps not built yet show their answer and link to the matching dashboard section
 | Data | Cleaned tables with CSV export (UTF-8 BOM so Excel opens it cleanly) |
 | Method | Every definition and threshold, plus the original SQL behind each dataset |
 
-## Design targets (profiles)
+## Design inputs (targets to check against)
 
-A profile describes a proposal's workstation table: per process, its station type, total target
-(tote presentations/h), station count, cycle and PAT wait time. Mark the high-volume process `main: true`.
-A `match` regex on the file name helps the tool pick a profile automatically.
+**Paste** the design inputs JSON from the Customer Success Tool (the main way): **Paste design inputs** on the
+start screen (step 1), under **Design targets**, or in Step 1 of the walkthrough. Give it a name (reusing a name
+replaces that import); the JSON is checked as you paste. Pressing **Ctrl+V** anywhere outside a text field with
+design inputs on the clipboard opens the dialog already filled. **Import file…** and drag-and-drop of the `.json`
+(also together with reports) work too.
+The file lists the workstation types (with their absolute max rate and single/double cycle), the
+flows (direction, workstation type) and, per scenario profile (e.g. Average, Peak), each flow's demand,
+workstation count and design rate per station.
 
-Real profiles contain confidential proposal figures, so they **don't live in this repo**.
-Put them in `src/profiles.local.js` (git-ignored):
-
-```js
-window.SIMRES_LOCAL_PROFILES = [
-  { id: 'my-project-avg', name: 'My project · Average design', source: 'Proposal v2, §3.3', match: /average/i,
-    processes: [ /* same shape as the example in src/profiles.js */ ] },
-];
-```
-
-`src/profiles.js` contains one illustrative example profile, which is never auto-selected.
+Each scenario profile becomes a design basis. A flow with no demand in a profile is left out. Each report is matched
+automatically by station counts and file name (`…_Average_…` → Average, `…_peak_…` → Peak); you can override
+the match per report. Imports are remembered in this browser only and can be removed again.
 
 Roles are auto-assigned within each station type. Side processes take the stations running more than 15% below
-the type median, smallest target first. Every other station goes to the main process. Override any
+the type median, smallest target first. Every other station goes to the main (highest-demand) process. Override any
 station under **Design targets → Station roles**; the change is saved in this browser.
+
+The design inputs don't carry a PAT wait time, so the cycle split in Step 5 uses the report's handling-time
+parameter. Hand-written profiles (same shape, with a `wait` per process) can still go in a git-ignored
+`src/profiles.local.js` as `window.SIMRES_LOCAL_PROFILES = [...]`.
 
 ## Customer data stays local
 
-`samples/` (except its README) and `src/profiles.local.js` are git-ignored. To get a
+`samples/` (except its README) and `src/profiles.local.js` are git-ignored. Keep design inputs JSON files in `samples/` or anywhere outside the repo. To get a
 **Load local sample** button on your machine:
 
 ```bash
@@ -86,8 +87,7 @@ python tools/extract_report.py "path/to/report.html" -o samples --sample samples
 index.html              app shell
 src/parser.js           HTML/JSON -> normalized model (datasets matched by key pattern)
 src/analysis.js         KPIs, flow balance, station health, design evaluation, findings
-src/profiles.js         profile format, example profile, auto role assignment
-src/profiles.local.js   your confidential project profiles (git-ignored, optional)
+src/profiles.js         design inputs import, profile format, auto role assignment
 src/walkthrough.js      the guided eight-step view
 src/charts.js           dependency-free SVG charts with annotations + tooltip
 src/app.js              loading, tabs, dashboard, compare, CSV export
