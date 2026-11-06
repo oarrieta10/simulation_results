@@ -209,10 +209,7 @@
       const box = div(right, 'ask-box');
       const text = `Questions on ${r.label} (${r.reportCode}):\n` + asks.map((c, i) => `${i + 1}. ${c.ask}`).join('\n');
       box.innerHTML = `<h4>To confirm with the simulation engineer</h4><ol>${asks.map((c) => `<li>${ctx.esc(c.ask)}</li>`).join('')}</ol><button class="btn small" type="button">Copy questions</button>`;
-      box.querySelector('button').addEventListener('click', async (e) => {
-        try { await navigator.clipboard.writeText(text); e.target.textContent = 'Copied ✓'; } catch (_) { e.target.textContent = 'Copy failed'; }
-        setTimeout(() => (e.target.textContent = 'Copy questions'), 2000);
-      });
+      box.querySelector('button').addEventListener('click', (e) => copyText(text, e.currentTarget));
     }
     why(body, 'Every later step compares this run to the proposal. If the layout or the timing parameters differ, a "pass" may not mean what you think, so settle these questions before quoting any number to the customer.');
   }
@@ -707,11 +704,48 @@
       customer: para.join('\n\n'),
       internal: `Open points on ${r.label} (${r.reportCode}):\n` + asks.map((q, i) => `${i + 1}. ${q}`).join('\n'),
     };
-    body.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
-      const old = b.textContent;
-      try { await navigator.clipboard.writeText(texts[b.dataset.copy]); b.textContent = 'Copied ✓'; } catch (_) { b.textContent = 'Copy failed'; }
-      setTimeout(() => (b.textContent = old), 2000);
-    }));
+    body.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copyText(texts[b.dataset.copy], b)));
+  }
+
+  /* Copy text to the clipboard. The async Clipboard API is blocked in some embedded browsers and
+     on file:// pages, so fall back to a selected hidden textarea + execCommand('copy'), and if
+     that fails too, show the text selected in a small box so Ctrl+C always works. */
+  async function copyText(text, btn) {
+    const label = btn.dataset.label || btn.textContent;
+    btn.dataset.label = label;
+    const done = (msg) => { btn.textContent = msg; setTimeout(() => (btn.textContent = label), 2000); };
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return done('Copied ✓'); }
+    } catch (_) { /* fall through */ }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    ta.remove();
+    btn.focus();
+    if (ok) return done('Copied ✓');
+    showCopyBox(text, btn);
+    done('Press Ctrl+C');
+  }
+
+  function showCopyBox(text, btn) {
+    const host = btn.parentElement;
+    host.querySelector('.copy-fallback')?.remove();
+    const wrap = document.createElement('div');
+    wrap.className = 'copy-fallback';
+    wrap.innerHTML = '<p class="muted small">Copying is blocked here. The text is selected: press Ctrl+C (⌘C on Mac).</p>';
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.rows = Math.min(10, text.split('\n').length + 1);
+    ta.readOnly = true;
+    wrap.appendChild(ta);
+    host.appendChild(wrap);
+    ta.focus();
+    ta.select();
   }
 
   // ---------------------------------------------------------------- shell

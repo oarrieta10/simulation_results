@@ -801,3 +801,6 @@ abbr.term:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-
 .cyc-row { column-gap: 12px; }
 .sg.simc { background: var(--hai-blue); color: #FFFFFF; }
 :root[data-theme="dark"] .sg.simc { background: #575FFF; }
+.copy-fallback { margin-top: 10px; }
+.copy-fallback p { margin: 0 0 6px; }
+.copy-fallback textarea { width: 100%; font: 400 12.5px/1.45 var(--font); color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: var(--radius-md); padding: 8px 10px; resize: vertical; }
