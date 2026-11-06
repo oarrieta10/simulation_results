@@ -12,7 +12,8 @@
     'ceiling': 'The highest rate the stations reach. When every station sits at the same height while work is queued, that height is their capacity.',
     'cycle': 'Seconds between two consecutive tote presentations at one station = 3600 ÷ presentations per hour.',
     'wait time': 'The time a tote pauses at the station to simulate the operator picking (from the proposal, used for the PAT).',
-    'tote exchange': 'The time to swap one tote for the next at the station: the part of the cycle that is not wait time.',
+    'switch time': 'The time to swap one tote for the next at the station: the part of the cycle that is not wait time.',
+    'buffer time': 'Spare seconds per tote presentation: the cycle the target allows minus the simulated cycle (wait + switch time).',
     'design basis': 'The proposal targets this run is checked against (station counts, throughput per process, wait times).',
     'station role': 'Which proposal process a station serves (picking, consolidation …), matched automatically from its throughput.',
   };
@@ -125,12 +126,16 @@
           ask: `${x.process.name}: the simulation has ${x.stationsSim} stations but the proposal specifies ${x.stationsDesign}. Is that intentional, or are some stations modelled under a different process?`,
         });
       });
-      const mainRow = d.rows.find((x) => x.process.main);
-      if (mainRow && mainRow.process.wait && d.reportOpTime && d.reportOpTime !== mainRow.process.wait) {
+    }
+    // Simulated total cycle vs the design's theoretical cycle (wait + switch), saturated processes only.
+    if (d) {
+      const slow = cycleRows(r).filter((c) => c.saturated && c.designWait && c.designSwitch && c.cycle - (c.designWait + c.designSwitch) >= 0.5);
+      if (slow.length) {
+        const th = (c) => c.designWait + c.designSwitch;
         checks.push({
-          level: 'warning', title: 'Wait time parameter',
-          text: `The report says <b>${fmt(d.reportOpTime)} s</b> handling per tote presentation; the proposal's PAT ${term('wait time')} is <b>${fmt(mainRow.process.wait)} s</b>. That changes how the observed ${term('cycle')} splits into wait and ${term('tote exchange')} (step 5).`,
-          ask: `The report parameter "outbound manual one box operation time" is ${fmt(d.reportOpTime)} s, but the proposal PAT wait time is ${fmt(mainRow.process.wait)} s. Which value did the simulation run with?`,
+          level: slow.some((c) => c.buffer < -0.05) ? 'critical' : 'warning', title: 'Simulated cycle slower than design theoretical',
+          text: slow.map((c) => `<b>${ctx.esc(c.name)}</b>: ${fmt(c.cycle, 1)} s per tote vs ${fmt(th(c), 1)} s theoretical (${fmt(c.designWait, 1)} s wait + ${fmt(c.designSwitch, 1)} s switch), +${fmt(c.cycle - th(c), 1)} s, ${c.buffer >= 0 ? `leaving ${fmt(c.buffer, 1)} s of the ${fmt(c.designBuffer, 1)} s buffer` : `${fmt(-c.buffer, 1)} s over the planned cycle`}`).join('; ') + ' (step 5).',
+          ask: `${slow.map((c) => `${c.name} cycles at ${fmt(c.cycle, 1)} s per tote in the simulation vs ${fmt(th(c), 1)} s (${fmt(c.designWait, 1)} s wait + ${fmt(c.designSwitch, 1)} s switch) in the design inputs`).join('; ')}. What adds the extra time in the simulation?`,
         });
       }
     }
@@ -212,8 +217,9 @@
       // Chart: every station of the main process, hour by hour, with the ceiling.
       const labels = r.hours.map((h) => `h${h}`);
       const medianLine = r.hours.map((_, i) => median(L.list.filter((s) => !L.outliers.includes(s)).map((s) => s.hourly[i])));
-      const wait = (L.process && L.process.wait) || a.reportOpTime;
-      const waitOnly = wait ? 3600 / wait : 0;
+      // Design theoretical rate per station: 3600 ÷ (wait + switch) from the design inputs.
+      const P = L.process || {};
+      const theoRate = P.wait && P.switch ? 3600 / (P.wait + P.switch) : 0;
       const peakI = k.peakOpenOutHour - 1;
       const v = div(left, 'viz-card');
       v.innerHTML = `<h4>${ctx.esc(L.label)} stations: ${term('tote presentation', 'tote presentations')} per hour</h4>`;
@@ -224,12 +230,12 @@
       series[0].name = 'Each station';
       C.hourly(v, {
         labels, height: 280, tipTitle: (i) => `Hour ${r.hours[i]}`,
-        yMax: Math.ceil(Math.max(waitOnly, L.steadyMedian, (L.process && L.process.maxRate) || 0, (L.process && L.process.stationRate) || 0) * 1.12 / 50) * 50,
+        yMax: Math.ceil(Math.max(theoRate, L.steadyMedian, P.maxRate || 0, P.stationRate || 0) * 1.12 / 50) * 50,
         series,
         refs: [
-          ...(L.process && L.process.maxRate ? [{ value: L.process.maxRate, label: `Workstation max: ${fmt(L.process.maxRate)}/h (${L.process.note || 'design inputs'})`, tone: 'faint' }] : []),
-          ...(waitOnly && !(L.process && L.process.maxRate && Math.abs(L.process.maxRate - waitOnly) < 15) ? [{ value: waitOnly, label: `If wait time were the only delay: ${fmt(waitOnly)}/h (${fmt(wait)} s)`, tone: 'faint', below: true }] : []),
-          ...(L.process && L.process.stationRate ? [{ value: L.process.stationRate, label: `Design rate per station: ${fmt(L.process.stationRate)}/h`, below: true }] : []),
+          ...(P.maxRate ? [{ value: P.maxRate, label: `Workstation max: ${fmt(P.maxRate)}/h (${P.note || 'design inputs'})`, tone: 'faint' }] : []),
+          ...(theoRate ? [{ value: theoRate, label: `Design theoretical: ${fmt(theoRate)}/h (${fmt(P.wait)} s wait + ${fmt(P.switch)} s switch)`, tone: 'faint', below: true }] : []),
+          ...(P.stationRate ? [{ value: P.stationRate, label: `Planned rate per station: ${fmt(P.stationRate)}/h`, below: true }] : []),
         ],
         annotations: [
           { i: Math.min(peakI, r.hours.length - 1), value: medianLine[Math.min(peakI, r.hours.length - 1)], text: `Still ${fmt(medianLine[peakI])}/h here, with\n${fmt(k.peakOpenOut)} tasks waiting`, dx: peakI > r.hours.length / 2 ? -18 : 18, dy: 54, anchor: peakI > r.hours.length / 2 ? 'end' : 'start' },
@@ -241,25 +247,88 @@
         `<b>Flat lines bunched at one height while work is waiting</b> mean the stations are working as fast as they can: that height is their ${term('ceiling')}. If robots were short, the lines would dip and scatter instead.`,
       ]);
 
-      // Cycle breakdown
-      const cyc = k.laborCycle;
-      const main = a.design && a.design.rows.find((x) => x.process === L.process);
-      const needCycle = main && main.perStationTarget ? 3600 / main.perStationTarget : 0;
-      if (cyc) {
-        const exch = wait ? cyc - wait : 0;
-        const scale = Math.max(cyc, needCycle) * 1.05;
-        const w = (sec) => `${(sec / scale) * 100}%`;
-        const cb = div(left, 'viz-card');
-        cb.innerHTML = `<h4>Where each station ${term('cycle')} goes</h4>
-          <div class="cycle-row"><span class="cycle-label">Simulated</span><div class="cycle-bar">
-            ${wait ? `<span class="seg wait" style="width:${w(wait)}">${fmt(wait)} s</span><span class="seg exch" style="width:${w(Math.max(0, exch))}">${fmt(exch, 1)} s</span>` : `<span class="seg wait" style="width:${w(cyc)}">${fmt(cyc, 1)} s</span>`}
-          </div><span class="cycle-total">${fmt(cyc, 1)} s = ${fmt(L.steadyMedian)}/h</span></div>
-          ${wait ? `<div class="pip-legend cycle-legend"><span><i class="pip both"></i> ${term('wait time')}: operator picking, ${L.process && L.process.wait ? 'from the design' : 'from the report\'s handling-time parameter'}</span><span><i class="pip extra"></i> ${term('tote exchange')}: swapping to the next tote</span></div>` : ''}
-          ${needCycle ? `<div class="cycle-row"><span class="cycle-label">Needed for target</span><div class="cycle-bar"><span class="seg need" style="width:${w(needCycle)}">${fmt(main.perStationTarget)}/h per station</span></div><span class="cycle-total">${fmt(needCycle, 1)} s</span></div>
-          <p class="cycle-note">The simulated cycle is <b>${fmt(needCycle - cyc, 1)} s shorter</b> than the ${fmt(needCycle, 1)} s each station can take and still hit ${fmt(main.process.target)}/h with the design's ${main.stationsDesign} stations, so the target holds with about ${pct(needCycle / cyc - 1)} to spare.</p>` : ''}`;
-        howTo(left, [
-          `A station's ${term('cycle')} is the time from one tote to the next. Part of it is the ${term('wait time')} (operator picking, fixed by the proposal); the rest is ${term('tote exchange')}, which the robots and station design control.`,
-          'To speed up the stations you can only shorten the exchange part, or add stations.',
+      // Cycle breakdown, one bar per process.
+      const cycles = cycleRows(r);
+      if (cycles.length) {
+        const cb = div(body, 'viz-card cyc-card'); // full width: the bars need the room
+        const s1 = (n) => `${fmt(n, 1)}s`;
+        cb.innerHTML = `<h4>Where each station ${term('cycle')} goes, per process</h4>
+          <div class="cyc-list">${cycles.map((c) => {
+            const hasDesign = !!(c.allowed && c.designWait);
+            // Design theoretical cycle = wait + switch (no buffer); the planned cycle adds the buffer.
+            const theo = hasDesign && c.designSwitch ? c.designWait + c.designSwitch : 0;
+            // Both bars share one scale: the planned cycle, or longer if a bar overruns it.
+            const scale = Math.max(c.cycle, c.allowed || 0, theo) || 1;
+            const share = (sec) => Math.round((sec / scale) * 100);
+            const bar = (parts, opts = {}) => {
+              const shown = parts.filter((pt) => pt.sec > 0.05);
+              const used = shown.reduce((s, pt) => s + pt.sec, 0);
+              const segs = shown.map((pt) => {
+                const pc = share(pt.sec);
+                // Two-line label when there's room, value only when narrow, nothing when tiny (hover shows all).
+                const label = pc >= 13 ? `<span class="sg-name">${pt.name}</span><span class="sg-val">${s1(pt.sec)} · ${pc}%</span>`
+                  : pc >= 6 ? `<span class="sg-val">${s1(pt.sec)}</span>` : '';
+                return `<span class="sg ${pt.cls}" style="flex:${pt.sec} 0 0" title="${pt.name}: ${s1(pt.sec)} (${pc}% of the planned cycle)">${label}</span>`;
+              }).join('');
+              // Unfilled remainder up to the planned cycle (keeps the scale honest; not part of the bar).
+              const gap = scale - used;
+              const ghost = gap > 0.05 ? `<span class="sg-ghost" style="flex:${gap} 0 0" title="${opts.ghostTitle || ''}">${opts.ghostLabel && share(gap) >= 8 ? `<span class="sg-val">${opts.ghostLabel}</span>` : ''}</span>` : '';
+              const over = opts.overAt ? `<span class="sg-over" style="left:${(opts.overAt / scale) * 100}%" title="Planned cycle: ${s1(opts.overAt)}"></span>` : '';
+              return `<div class="cyc-bar">${segs}${ghost}${over}</div>`;
+            };
+            // Design: wait + switch from the design inputs, then the buffer up to the planned cycle.
+            const designBar = !hasDesign ? '' : bar([
+              { sec: c.designWait, cls: 'wait', name: 'Wait time' },
+              c.designSwitch ? { sec: c.designSwitch, cls: 'exch', name: 'Switch time' } : { sec: Math.max(0, c.designBuffer), cls: 'unk', name: 'Switch + buffer' },
+              ...(c.designSwitch ? [{ sec: Math.max(0, c.designBuffer), cls: 'buffer', name: 'Buffer time' }] : []),
+            ], { overAt: c.designBuffer < -0.05 ? c.allowed : 0 });
+            // Simulated: the total cycle the run produced, as one block (the report has no per-tote
+            // timing to split it). No buffer; the rest of the planned cycle stays empty.
+            const left = c.allowed ? c.allowed - c.cycle : 0;
+            const simBar = bar([
+              c.saturated
+                ? { sec: c.cycle, cls: 'simc', name: 'Simulated cycle' }
+                : { sec: c.cycle, cls: 'idle', name: 'Time between totes' },
+            ], {
+              ghostLabel: left > 0.05 ? `${s1(left)} to plan` : '',
+              ghostTitle: left > 0.05 ? `${s1(left)} left before the planned ${s1(c.allowed)} cycle` : '',
+              overAt: left < -0.05 ? c.allowed : 0,
+            });
+            const rateTxt = (sec) => `${fmt(3600 / sec)}/h`;
+            const designVal = hasDesign ? (theo ? `<span><b>${s1(theo)}</b> · ${rateTxt(theo)}</span><small>theoretical</small>` : `<span><b>${s1(c.designWait)}</b> wait</span><small>switch not given</small>`) : '';
+            const simVal = `<span><b>${s1(c.cycle)}</b> · ${rateTxt(c.cycle)}</span><small>${c.saturated ? (theo ? (Math.abs(1 - theo / c.cycle) < 0.005 ? 'same as theoretical' : theo / c.cycle < 1 ? `${pct(1 - theo / c.cycle)} shorter than theoretical` : `${pct(theo / c.cycle - 1)} above theoretical`) : 'simulated') : 'demand-limited'}</small>`;
+            const meta = [
+              c.tph ? `${fmt(c.tph)} TPH planned` : `${fmt(c.rate)} TPH`,
+              `Planned cycle ${s1(c.allowed || c.cycle)}`,
+              hasDesign && c.designSwitch ? `<b class="m-buf">Design buffer ${s1(c.designBuffer)} · ${share(c.designBuffer)}%</b>` : '',
+            ].filter(Boolean).join('<i class="m-sep">|</i>');
+            // The comparison: simulated cycle vs the design's theoretical cycle, and what's left of the plan.
+            // The comparison: simulated total cycle vs the design's theoretical cycle, and vs the plan.
+            const dCyc = c.saturated && theo ? c.cycle - theo : null;
+            const vsPlan = left >= -0.05 ? `still faster than the planned ${fmt(c.tph)}/h, with ${s1(Math.max(0, left))} to spare` : `<b>slower than the planned ${fmt(c.tph)}/h</b> by ${s1(-left)} per tote`;
+            const lvl = dCyc === null ? '' : left < -0.05 ? 'bad' : Math.abs(dCyc) < 0.3 ? 'ok' : 'warn';
+            const notes = [
+              dCyc !== null
+                ? `<span class="${lvl === 'ok' ? 'cyc-ok' : 'cyc-warn'}"><span class="cc-icon mini ${lvl}" aria-hidden="true">${lvl === 'ok' ? '✓' : lvl === 'bad' ? '✕' : '!'}</span>${Math.abs(dCyc) < 0.3
+                  ? `Simulated ${s1(c.cycle)} per tote matches the ${s1(theo)} design theoretical; ${vsPlan}.`
+                  : `Simulated ${s1(c.cycle)} per tote vs ${s1(theo)} design theoretical (${dCyc > 0 ? '+' : '−'}${s1(Math.abs(dCyc))}, ${pct(Math.abs(dCyc) / theo)} ${dCyc > 0 ? 'slower' : 'faster'}), so ${rateTxt(c.cycle)} instead of ${rateTxt(theo)}; ${vsPlan}.`}</span>`
+                : '',
+              !c.saturated ? `<span>Demand-limited: ${c.stations} station${c.stations > 1 ? 's' : ''} at ${fmt(c.rate)}/h, a tote about every ${s1(c.cycle)}. The stations never filled up, so this is how often work arrived, not their capacity, and it can't be compared with the theoretical cycle.</span>` : '',
+              hasDesign && !c.designSwitch ? '<span>No switch time in the design inputs for this flow, so there is no theoretical cycle to compare with.</span>' : '',
+            ].filter(Boolean).join('');
+            return `<div class="cyc-proc ${c.saturated ? '' : 'unsat'}">
+              <div class="cyc-head"><span class="cyc-name"><b>${ctx.esc(c.name)}</b>${c.note ? `<span class="muted">${ctx.esc(c.note)}</span>` : ''}</span><span class="cyc-meta">${meta}</span></div>
+              ${hasDesign ? `<div class="cyc-row"><span class="cyc-tag">Design</span>${designBar}<span class="cyc-val">${designVal}</span></div>` : ''}
+              <div class="cyc-row"><span class="cyc-tag">Simulated</span>${simBar}<span class="cyc-val">${simVal}</span></div>
+              ${notes ? `<p class="cyc-cap">${notes}</p>` : ''}</div>`;
+          }).join('')}</div>
+          <p class="cyc-foot muted small"><b>Design</b>: wait + switch from the design inputs is the theoretical cycle; the ${term('buffer time')} on top brings it to the planned cycle (TPH planned). <b>Simulated</b>: the total cycle the run produced, 3600 ÷ tote presentations per station per hour, with the simulation set up from the same design inputs. The dashed outline is what's left of the planned cycle.</p>`;
+        howTo(body, [
+          `A station's ${term('cycle')} is the time from one tote to the next. The design builds it from the ${term('wait time')} (operator picking) and the ${term('switch time')} (swapping to the next tote); together they're the <b>theoretical</b> cycle.`,
+          cycles.some((c) => c.allowed)
+            ? 'Compare where the two filled bars end. The <b>design</b> theoretical cycle (wait + switch) is what the simulation should achieve with these inputs; the <b>simulated</b> bar is the cycle it actually produced. A longer simulated bar means the stations ran slower than designed. The buffer is planning margin, so it only appears on the design bar; on the simulated bar, the dashed outline shows how much of that margin is left.'
+            : 'Each bar is scaled to its own process.',
+          'Only <b>saturated</b> processes can be compared this way; in the others the stations were waiting for work, so their cycle reflects how often work arrived, not their capacity.',
         ]);
       }
     }
@@ -305,7 +374,7 @@
       </div>`).join(''));
 
     why(body, L && L.plateau
-      ? `Knowing the limit tells you which lever moves throughput. Adding robots or chargers here would change nothing; only more ${L.label.toLowerCase()} stations or a shorter tote exchange would.`
+      ? `Knowing the limit tells you which lever moves throughput. Adding robots or chargers here would change nothing; only more ${L.label.toLowerCase()} stations or a shorter switch time would.`
       : 'Knowing the limit tells you which lever moves throughput: more stations, more robots, or a different release of work.');
   }
 
@@ -319,6 +388,58 @@
     const m = { pass: ['ok', '✓', 'Pass'], demand: ['warn', '!', 'Not proven'], fail: ['bad', '✕', 'Below target'], missing: ['bad', '✕', 'No stations'] }[x.status];
     return `<span class="count-chip ${m[0]} slim"><span class="cc-icon" aria-hidden="true">${m[1]}</span><span class="cc-note">${m[2]}</span></span>`;
   };
+
+  /* Cycle per process: seconds between tote presentations at one station.
+     saturated  the stations hit a shared ceiling while work was queued for them (main process,
+                or an inbound group that plateaued while inbound work was open). Only then is
+                cycle − wait a real switch time; otherwise it's time spent waiting for work.
+     allowed    3600 ÷ (target ÷ design stations): the cycle the design target allows.
+     buffer     allowed − cycle (negative = over). */
+  function cycleRows(r) {
+    const a = r.analysis, k = a.kpis, d = a.design, L = a.labor, H = r.hours.length;
+    const src = d ? d.rows.filter((x) => x.group) : a.types.map((g) => ({ group: g, process: g.process }));
+    const order = (x) => (x.group === L ? 0 : 1);
+    return [...src].sort((x, y) => order(x) - order(y)).map((x) => {
+      const g = x.group, p = x.process || {};
+      const inbound = g.isInbound || p.direction === 'inbound';
+      const healthy = g.list.filter((s) => !g.outliers.includes(s));
+      let saturated = g === L ? !!L.plateau : false;
+      let rate = saturated ? g.steadyMedian : 0;
+      // Inbound: saturated if the stations ran flat during the hours inbound work was queued.
+      if (g !== L && inbound) {
+        const queued = r.hours.map((_, i) => i).filter((i) => i > 0 && r.system[i].openIn > 0);
+        const vals = healthy.flatMap((s) => queued.map((i) => s.hourly[i]).filter((v) => v > 0));
+        const m = median(vals);
+        if (vals.length >= 3 && m && (Math.max(...vals) - Math.min(...vals)) / m <= 0.05) { saturated = true; rate = m; }
+      }
+      if (!rate) rate = median(healthy.flatMap((s) => s.hourly.filter((v, i) => i > 0 && i < H - 1 && v > 0)));
+      if (!rate) return null;
+      const cycle = 3600 / rate;
+      /* Wait time in the simulated bar = the simulation's own setting (the report's
+         "manual one box operation time" parameter). The report doesn't measure wait or switch time,
+         only the total cycle, so switch = cycle − sim setting. The design inputs' wait is compared,
+         never assumed. Without a sim setting, the design wait is used and marked as assumed. */
+      const reportWait = (inbound ? r.params.inboundOpTime : r.params.outboundOpTime) || 0;
+      const designWait = p.wait || 0;
+      const waitSource = reportWait ? 'sim' : designWait ? 'design' : '';
+      const waitRaw = reportWait || designWait;
+      const settingConflict = !!(waitRaw && waitRaw > cycle + 0.05); // a station can't beat its own wait
+      const wait = settingConflict ? 0 : waitRaw;
+      const waitMismatch = !!(reportWait && designWait && Math.abs(reportWait - designWait) > 0.05);
+      const waitFromDesign = waitSource === 'design';
+      const waitConflict = settingConflict;
+      const allowed = x.perStationTarget ? 3600 / x.perStationTarget : 0;
+      return {
+        // Design breakdown straight from the design inputs: wait + switch + buffer = allowed cycle.
+        designSwitch: p.switch || 0,
+        designBuffer: allowed && designWait ? allowed - designWait - (p.switch || 0) : 0,
+        simSwitch: saturated && wait ? Math.max(0, cycle - wait) : 0,
+        name: g.label, note: p.note || '', tph: x.perStationTarget || 0,
+        stations: g.count, rate, cycle, wait, waitFromDesign, waitSource, waitMismatch, waitRaw, designWait, reportWait, waitConflict, saturated, allowed,
+        buffer: allowed ? allowed - cycle : 0, target: p.target || 0, stationsDesign: x.stationsDesign || g.count,
+      };
+    }).filter(Boolean);
+  }
 
   // Capacity of the main process: observed per-station ceiling × stations (simulated and designed).
   function marginNumbers(r) {
@@ -481,7 +602,7 @@
     v.innerHTML = `<h4>Every station's average rate, grouped by ${r.profile ? 'process' : 'station type'}</h4>`;
     C.strip(v, {
       types: a.types, ceiling: k.ceiling, color: ctx.SERIES[0], flagColor: 'var(--status-critical)',
-      ceilingLabel: k.ceiling ? `If wait time were the only delay: ${fmt(k.ceiling)}/h` : '',
+      ceilingLabel: k.ceiling ? (k.ceilingSource === 'design' ? `Design theoretical: ${fmt(k.ceiling)}/h` : `Handling-time ceiling: ${fmt(k.ceiling)}/h (report parameter)`) : '',
     });
     howTo(left, [
       'Each dot is one station, placed at the tote presentations it handled per hour on average. The short vertical line is the median of its group.',

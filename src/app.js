@@ -265,7 +265,7 @@
         sub: a.design.rows.filter((x) => x.process.main).map((x) => `${esc(x.process.name)} ${pct(x.pct)} of target`).join(' · '),
         status: k.designPass === k.designTotal ? 'good' : a.design.rows.some((x) => x.status === 'fail' || x.status === 'missing') ? 'critical' : 'warning',
       }] : []),
-      { label: `${a.labor ? esc(a.labor.label) : 'Labor'} station rate`, value: k.laborSteady ? `${fmt(k.laborSteady)}<small>/h</small>` : '–', sub: k.ceiling ? `${pct(k.ceilingUse)} of ${fmt(k.ceiling)}/h ceiling · ${fmt(k.laborCycle, 1)} s cycle` : 'steady-state median' },
+      { label: `${a.labor ? esc(a.labor.label) : 'Labor'} station rate`, value: k.laborSteady ? `${fmt(k.laborSteady)}<small>/h</small>` : '–', sub: k.ceiling ? `${pct(k.ceilingUse)} of ${fmt(k.ceiling)}/h ${k.ceilingSource === 'design' ? 'theoretical' : 'ceiling'} · ${fmt(k.laborCycle, 1)} s cycle` : 'steady-state median' },
       { label: 'Robot productivity', value: k.robotRate ? `${fmt(k.robotRate, 1)}<small>/robot/h</small>` : '–', sub: `tote presentations${k.robotFleet ? ` · ≈${fmt(k.robotFleet)} robots (inferred)` : ''}` },
       { label: 'Charger utilization', value: a.chargers.length ? `${fmt(k.chargerMean)}<small>%</small>` : '–', sub: a.chargers.length ? `peak ${fmt(k.chargerPeak)}%` : '' },
     ];
@@ -340,7 +340,7 @@
     const sc = card(ss, 'Station performance', `Each dot is a station placed at its average tote presentations per hour, grouped by ${r.profile ? 'design process' : 'station type'}. The vertical tick is the group median; ▲ marks stations more than 15% below it.`);
     C.strip(sc, {
       types: a.types, ceiling: k.ceiling, color: SERIES[0], flagColor: cssVar('status-critical'),
-      ceilingLabel: k.ceiling ? `Manual ceiling ${fmt(k.ceiling)}/h (${fmt(a.opTime)} s handling)` : '',
+      ceilingLabel: k.ceiling ? (k.ceilingSource === 'design' ? `Design theoretical ${fmt(k.ceiling)}/h (${fmt(k.theoCycle, 1)} s cycle)` : `Handling-time ceiling ${fmt(k.ceiling)}/h (${fmt(a.opTime)} s, report parameter)`) : '',
     });
     const hc = card(ss, 'Tote presentations per station by hour', 'Darker cells mean more tote presentations. Click a column header to sort.');
     renderHeatmap(hc, r);
@@ -450,7 +450,17 @@
           <th class="left">${esc(p.name)}</th><td class="left muted">${esc(p.direction)}</td><td class="left muted">${esc(p.note)} · ${esc(p.cycle)}</td>
           <td>${n(p.target)}</td><td>${n(p.stations)}</td><td>${n(p.stationRate)}</td>
           <td><b>${x.group ? fmt(x.perStationActual) : '–'}</b></td><td>${n(p.maxRate)}</td>
-          <td>${n(i.effectiveHours, 1)}</td><td>${n(i.linesPerOrder, 2)}</td><td>${n(i.unitsPerLine, 2)}</td><td>${i.hitRate ? pct(i.hitRate) : '–'}</td></tr>`; }).join('')}</tbody></table></div>`;
+          <td>${n(i.effectiveHours, 1)}</td><td>${n(i.linesPerOrder, 2)}</td><td>${n(i.unitsPerLine, 2)}</td><td>${i.hitRate ? pct(i.hitRate) : '–'}</td></tr>`; }).join('')}</tbody></table></div>
+        <h4 class="subtable-h">Simulation set-up from the design inputs</h4>
+        <div class="table-wrap"><table class="data design-table"><thead><tr>
+          <th class="left">Process</th><th>Wait<br><span class="muted">s</span></th><th>Switch<br><span class="muted">s</span></th><th>Sim hours<br><span class="muted">design / run</span></th>
+          <th class="left">Task release</th><th>Orders<br><span class="muted">per batch</span></th><th>Tasks<br><span class="muted">per order</span></th><th>Batches<br><span class="muted">in rotation</span></th>
+          <th>Tasks<br><span class="muted">per release</span></th><th>Interval</th><th class="left">Zones</th></tr></thead>
+        <tbody>${d.rows.map((x) => { const p = x.process, s = p.sim || {}; const hrsDiff = s.hours && Math.abs(s.hours - r.durationH) > 0.05; return `<tr>
+          <th class="left">${esc(p.name)}</th><td>${n(p.wait, 1)}</td><td>${n(p.switch, 1)}</td>
+          <td>${s.hours ? `${fmt(s.hours, 1)} / ${hrsDiff ? `<b class="mismatch" title="Differs from the run length">${fmt(r.durationH, 1)}</b>` : fmt(r.durationH, 1)}` : '–'}</td>
+          <td class="left">${esc(s.releaseMethod || (s.tasksPerRelease ? 'Fixed release' : '–'))}</td><td>${n(s.ordersPerBatch)}</td><td>${n(s.tasksPerOrder)}</td><td>${n(s.batchesInRotation)}</td>
+          <td>${n(s.tasksPerRelease)}</td><td>${s.interval ? `every ${esc(s.interval)}` : '–'}</td><td class="left muted">${esc(s.zones || '–')}</td></tr>`; }).join('')}</tbody></table></div>`;
       sec.appendChild(det);
     }
 

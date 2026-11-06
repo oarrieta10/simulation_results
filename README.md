@@ -29,7 +29,7 @@ doubles as the executive summary. Use ← → to move between steps.
 2. **Did it meet the design?** Per process: simulated rate vs target, with the work released behind it. Pass / Not proven / Below target, explained.
 3. **How hard was it pushed?** Work released per hour against the design demand, per-process demand vs design, and whether the release was front-loaded.
 4. **Did the system keep up?** The open-task queue hour by hour, its peak and end, the time to clear it, and a verdict (kept up / caught up later / fell behind).
-5. **What limited it?** Every station of the main process against its ceiling, the cycle split into wait and tote exchange vs the cycle needed for target, and stations / robots / chargers checked one by one.
+5. **What limited it?** Every station of the main process against the design theoretical and planned rates; per process, the design cycle (wait + switch from the design inputs, plus the buffer up to the planned cycle) next to the total cycle the simulation produced, with the gap to theoretical and what's left of the plan; and stations / robots / chargers checked one by one.
 6. **Is every station behaving?** Each station's rate within its process group, with outliers, idle time and flat (demand-limited) stations called out.
 7. **How much margin is there?** Capacity with the design's station count vs the target (and as simulated, and the theoretical workstation max), stations needed, cycle time allowed, demand growth absorbed.
 8. **What do I tell the customer?** A customer-ready summary built from steps 1–7 with **Copy text**, the eight answers at a glance, and the open points to settle internally.

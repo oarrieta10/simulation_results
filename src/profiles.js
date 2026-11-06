@@ -69,10 +69,19 @@
             target, stations,
             stationRate: num(f.workstationFlowTPH), maxRate: num(wt.absoluteMaxTPH),
             wait: num(f.waitTime || f.waitTimeSec || 0),
+            switch: num(f.switchTime || f.switchTimeSec || 0),
             note: wt.name || '',
             inputs: {
               effectiveHours: num(f.effectiveHours), hitRate: num(f.hitRate), linesPerOrder: num(f.linesPerOrder),
               unitsPerLine: num(f.unitsPerLine), unitsPerCase: num(f.unitsPerCase), totesPerCase: num(f.totesPerCase),
+            },
+            // How the simulation should be set up for this flow (shown for checking the run).
+            sim: {
+              hours: num(f.simulationHours), releaseMethod: f.taskReleaseMethod || '',
+              ordersPerBatch: num(f.ordersPerBatch), tasksPerOrder: num(f.tasksPerOrder), batchesInRotation: num(f.batchesInRotation),
+              tasksPerRelease: num(f.tasksPerRelease),
+              interval: f.taskIntervalValue ? `${f.taskIntervalValue} ${f.taskIntervalUnit || ''}`.trim() : '',
+              zones: f.zoneDistribution || '',
             },
           };
         }).filter(Boolean);

@@ -95,11 +95,14 @@
       };
     });
 
-    // Handling ceiling: 3600 s / time per tote presentation. The design wait time (profile) wins
-    // over the report's "manual one box operation time" parameter when both exist.
+    // Reference rate for the main stations. Preferred: the design theoretical cycle (wait + switch
+    // from the design inputs). Fallback: the report's "manual one box operation time" parameter.
     const labor = types.find((t) => t.isLabor);
     const reportOpTime = m.params.outboundOpTime || m.params.inboundOpTime || 0;
-    const opTime = (labor && labor.process && labor.process.wait) || reportOpTime;
+    const lp = (labor && labor.process) || {};
+    const theoCycle = lp.wait && lp.switch ? lp.wait + lp.switch : 0;
+    const opTime = theoCycle || reportOpTime || lp.wait || 0;
+    const ceilingSource = theoCycle ? 'design' : opTime ? 'report' : '';
     const ceiling = opTime ? 3600 / opTime : 0;
     const laborCycle = labor && labor.steadyMedian ? 3600 / labor.steadyMedian : 0;
 
@@ -127,7 +130,7 @@
       stations: m.stations.length,
       laborMedian: labor ? labor.median : 0,
       laborSteady: labor ? labor.steadyMedian : 0,
-      laborCycle, ceiling, ceilingUse: ceiling && labor ? labor.steadyMedian / ceiling : 0,
+      laborCycle, ceiling, ceilingSource, theoCycle, ceilingUse: ceiling && labor ? labor.steadyMedian / ceiling : 0,
       robotFleet: sum(robots.map((r) => r.fleetEst || 0)),
       robotRate: robots[0] ? robots[0].runAvg || robots[0].mean : 0,
       chargerMean: chargers.length ? mean(chargers.map((c) => c.mean)) : 0,
@@ -142,7 +145,7 @@
       kpis.mainPctTarget = mainRow ? mainRow.pct : 0;
     }
     const findings = buildFindings(m, { kpis, types, labor, robots, chargers, growingOutHours, lastOut, lastIn, opTime, design });
-    return { totals, flow, types, groupOf, robots, chargers, kpis, findings, labor, opTime, reportOpTime, design, profile };
+    return { totals, flow, types, groupOf, robots, chargers, kpis, findings, labor, opTime, reportOpTime, ceilingSource, theoCycle, design, profile };
   }
 
   /* Target vs actual per design process.
@@ -216,11 +219,14 @@
     }
 
     if (a.labor && a.labor.plateau) {
-      const designWait = a.labor.process && a.labor.process.wait;
+      const P = a.labor.process || {};
+      const dCyc = k.theoCycle ? k.laborCycle - k.theoCycle : 0;
       f.push({
         level: 'warning', title: `${a.labor.label} stations are the binding constraint`,
         text: `Healthy ${a.labor.label.toLowerCase()} stations plateaued at <b>${fmt(a.labor.steadyMedian)} tote presentations/h</b> (±${pct(a.labor.spread / 2, 1)}) while outbound work was queued — a flat ceiling means station processing, not robot supply, limits throughput.` +
-          (k.ceiling ? ` That is an effective cycle of <b>${fmt(k.laborCycle, 1)} s/tote presentation</b> against a ${fmt(a.opTime)} s ${designWait ? 'design wait time' : 'manual handling time'}, so ~<b>${fmt(k.laborCycle - a.opTime, 1)} s</b> per presentation is tote exchange.` : ''),
+          (k.theoCycle
+            ? ` That is a simulated cycle of <b>${fmt(k.laborCycle, 1)} s per tote</b> against the design's theoretical ${fmt(k.theoCycle, 1)} s (${fmt(P.wait)} s wait + ${fmt(P.switch)} s switch)${Math.abs(dCyc) >= 0.3 ? `: <b>${dCyc > 0 ? '+' : '−'}${fmt(Math.abs(dCyc), 1)} s</b>, so ${fmt(k.ceilingUse * 100)}% of the theoretical ${fmt(k.ceiling)}/h` : ', as designed'}.`
+            : k.ceiling ? ` That is a simulated cycle of <b>${fmt(k.laborCycle, 1)} s per tote</b>; the report's handling-time parameter is ${fmt(a.opTime)} s.` : ''),
       });
     }
 
@@ -282,13 +288,6 @@
     }
     if (d.unassigned.length) {
       f.push({ level: 'warning', title: 'Stations without a design role', text: `${d.unassigned.map((g) => `${g.count} ${g.label.toLowerCase()}`).join(', ')} station(s) aren't covered by ${d.profile.name}.` });
-    }
-    const mainP = d.rows.find((r) => r.process.main);
-    if (mainP && mainP.process.wait && d.reportOpTime && d.reportOpTime !== mainP.process.wait) {
-      f.push({
-        level: 'warning', title: 'Simulation parameter differs from the PAT wait time',
-        text: `The report's manual operation time is <b>${fmt(d.reportOpTime)} s</b>, but the design wait time for ${mainP.process.name.toLowerCase()} is <b>${fmt(mainP.process.wait)} s</b>. Check which value the simulation actually used before quoting its rates.`,
-      });
     }
   }
 
