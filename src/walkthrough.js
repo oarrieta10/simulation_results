@@ -59,11 +59,13 @@
     out.stations = outl
       ? { level: 'critical', text: `${outl} station${outl > 1 ? 's' : ''} ran more than 15% below the others in ${outl > 1 ? 'their roles' : 'its role'}.` }
       : { level: 'good', text: 'Yes. Every station runs within 15% of the others in its role.' };
-    const main = d && d.rows.find((x) => x.process.main);
-    out.margin = main && main.capacity
-      ? { level: main.capacityPct >= 1.05 ? 'good' : main.capacityPct >= 1 ? 'warning' : 'critical', text: `${main.process.name} capacity is ${fmt(main.capacity)}/h, ${pct(main.capacityPct)} of target.` }
-      : { level: 'info', text: 'Capacity isn\'t observable: the stations never filled up.' };
-    out.summary = { level: 'info', text: 'The conclusions above, worded for the customer.' };
+    const mg = marginNumbers(r);
+    out.margin = !mg ? { level: 'info', text: 'Capacity isn\'t observable: the stations never filled up, so this run can\'t measure it.' }
+      : mg.target ? {
+        level: mg.capDesignPct >= 1.05 ? 'good' : mg.capDesignPct >= 1 ? 'warning' : 'critical',
+        text: `With the design's ${mg.stationsDesign} stations, ${mg.name.toLowerCase()} can do about <b>${fmt(mg.capDesign)}/h</b>: ${pct(mg.capDesignPct)} of the ${fmt(mg.target)}/h target${mg.stationsSim !== mg.stationsDesign ? ` (${pct(mg.capSimPct)} with the ${mg.stationsSim} simulated)` : ''}.`,
+      } : { level: 'info', text: `${mg.name} stations top out at ${fmt(mg.rate)}/h each, ${fmt(mg.capSim)}/h in total. Add design inputs to compare with a target.` };
+    out.summary = { level: 'info', text: 'The conclusions above, worded for the customer, plus the points to settle internally.' };
     return out;
   }
 
@@ -307,6 +309,273 @@
       : 'Knowing the limit tells you which lever moves throughput: more stations, more robots, or a different release of work.');
   }
 
+  // ---------------------------------------------------------------- shared
+  function noDesign(body, what) {
+    const b = div(body, 'coming');
+    b.innerHTML = `<span>${what} needs the design inputs, so there's nothing to compare yet.</span>
+      <span class="check-actions"><button class="btn small primary" type="button" data-paste-design>Paste design inputs</button><button class="btn small" type="button" data-import-design>Import file…</button></span>`;
+  }
+  const statusChip = (x) => {
+    const m = { pass: ['ok', '✓', 'Pass'], demand: ['warn', '!', 'Not proven'], fail: ['bad', '✕', 'Below target'], missing: ['bad', '✕', 'No stations'] }[x.status];
+    return `<span class="count-chip ${m[0]} slim"><span class="cc-icon" aria-hidden="true">${m[1]}</span><span class="cc-note">${m[2]}</span></span>`;
+  };
+
+  // Capacity of the main process: observed per-station ceiling × stations (simulated and designed).
+  function marginNumbers(r) {
+    const a = r.analysis, L = a.labor, d = a.design;
+    if (!L || !L.plateau || !L.steadyMedian) return null;
+    const row = d && d.rows.find((x) => x.process === L.process);
+    const rate = L.steadyMedian;
+    const stationsSim = L.count - L.outliers.length;
+    const stationsDesign = row ? row.stationsDesign : stationsSim;
+    const target = row ? row.process.target : 0;
+    const capSim = rate * stationsSim, capDesign = rate * stationsDesign;
+    const perStationNeed = target && stationsDesign ? target / stationsDesign : 0;
+    return {
+      name: L.label, rate, stationsSim, stationsDesign, target, capSim, capDesign,
+      capSimPct: target ? capSim / target : 0, capDesignPct: target ? capDesign / target : 0,
+      stationsNeeded: target ? Math.ceil(target / rate) : 0,
+      cycle: 3600 / rate, cycleAllowed: perStationNeed ? 3600 / perStationNeed : 0, perStationNeed,
+      maxRate: L.process && L.process.maxRate, stationRate: L.process && L.process.stationRate,
+    };
+  }
+
+  // ---------------------------------------------------------------- step 2
+  function renderMet(body, r, ctx) {
+    const d = r.analysis.design;
+    if (!d) return noDesign(body, 'Checking against the design');
+    const grid = div(body, 'step-grid');
+    const left = div(grid, 'step-main'), right = div(grid, 'step-side');
+    const v = div(left, 'viz-card');
+    v.innerHTML = `<h4>Simulated vs design, per process</h4>
+      <div class="bullets">${d.rows.map((x) => {
+        const scale = Math.max(x.actual, x.process.target, x.demand) * 1.1 || 1;
+        const w = (n) => `${Math.min(100, (n / scale) * 100)}%`;
+        const cls = x.status === 'pass' ? 'ok' : x.status === 'demand' ? 'warn' : 'bad';
+        return `<div class="bullet-row ${cls}">
+          <div class="bullet-head"><b>${ctx.esc(x.process.name)}</b>
+            <span class="bullet-val"><b>${fmt(x.actual)}</b><span class="muted"> / ${fmt(x.process.target)} per h</span> <span class="bullet-pct">${pct(x.pct)}</span></span>${statusChip(x)}</div>
+          <div class="bullet-track" role="img" aria-label="${ctx.esc(x.process.name)}: simulated ${fmt(x.actual)} per hour against a target of ${fmt(x.process.target)}">
+            <span class="b-demand" style="width:${w(x.demand)}" title="Released: ${fmt(x.demand)}/h"></span>
+            <span class="b-actual" style="width:${w(x.actual)}" title="Simulated: ${fmt(x.actual)}/h"></span>
+            <span class="b-target" style="left:${w(x.process.target)}" title="Target: ${fmt(x.process.target)}/h"></span>
+          </div></div>`;
+      }).join('')}</div>
+      <div class="pip-legend"><span><i class="lg-bar actual"></i> simulated rate</span><span><i class="lg-bar demand"></i> work released</span><span><i class="lg-tick"></i> design target</span></div>`;
+    howTo(left, [
+      'Each row is one process, scaled to its own target. The <b>dark bar</b> is what the simulation completed per hour; the <b>black tick</b> is the design target.',
+      'Past the tick is a pass. The pale bar behind shows how much work the simulation released: if it stops short of the tick, the run never asked for the target, so a shortfall there is "not proven" rather than a fail.',
+    ]);
+
+    const kinds = [
+      ['pass', 'ok', '✓ Pass', 'Completed at least the target rate.'],
+      ['demand', 'warn', '! Not proven', 'Fell short, but the stations still had spare capacity: the simulation didn\'t release enough work to reach the target. Rerun with more demand to prove it.'],
+      ['fail', 'bad', '✕ Below target', 'The stations were full and still fell short. This is a real capacity gap.'],
+    ];
+    right.insertAdjacentHTML('beforeend', `<h4 class="side-h">What each result means</h4>${kinds.map(([k, cls, label, text]) => {
+      const n = d.rows.filter((x) => x.status === k);
+      return `<div class="elim ${n.length ? '' : 'dim'}"><div class="elim-head"><b>${label}</b><span class="muted small">${n.length} process${n.length === 1 ? '' : 'es'}</span></div>${n.length ? `<p class="elim-names">${n.map((x) => ctx.esc(x.process.name)).join(' · ')}</p>` : ''}<p>${text}</p></div>`;
+    }).join('')}
+      ${d.demandFactor > 1.05 ? `<div class="elim"><p>The run released about <b>${pct(d.demandFactor)}</b> of the design demand, so these passes already include a margin. Step 3 shows how the work arrived.</p></div>` : ''}`);
+    why(body, `These targets are what Hai Robotics commits to in the PAT (performance acceptance test). A pass here is the first thing the customer will ask about, and a "not proven" means the run can't back up the number yet.`);
+  }
+
+  // ---------------------------------------------------------------- step 3
+  function renderPushed(body, r, ctx) {
+    const a = r.analysis, d = a.design, k = a.kpis;
+    const grid = div(body, 'step-grid wide-main');
+    const left = div(grid, 'step-main'), right = div(grid, 'step-side');
+    const labels = r.hours.map((h) => `h${h}`);
+    const relOut = a.flow.map((x) => Math.max(0, x.relOut)), relIn = a.flow.map((x) => Math.max(0, x.relIn));
+    const tot = relOut.map((v, i) => v + relIn[i]);
+    const designTotal = d ? (d.profile.ratePph || d.rows.reduce((s, x) => s + x.process.target, 0)) : 0;
+    const pk = tot.indexOf(Math.max(...tot));
+    const hasIn = relIn.some((v) => v > 0);
+    const v = div(left, 'viz-card');
+    v.innerHTML = '<h4>Work released into the system, per hour</h4>';
+    C.hourly(v, {
+      labels, height: 270, totalRow: true, tipTitle: (i) => `Hour ${r.hours[i]}`,
+      series: [
+        { name: 'Outbound released', color: ctx.SERIES[0], values: relOut },
+        ...(hasIn ? [{ name: 'Inbound released', color: ctx.SERIES[1], values: relIn }] : []),
+      ],
+      refs: designTotal ? [{ value: designTotal, label: `Design demand ${fmt(designTotal)}/h` }] : [],
+      annotations: [{ i: pk, value: tot[pk], text: `Peak release: ${fmt(tot[pk])}\nin hour ${pk + 1}`, dx: pk > labels.length / 2 ? -20 : 22, dy: -6, anchor: pk > labels.length / 2 ? 'end' : 'start' }],
+    });
+    howTo(left, [
+      'Each bar is the work that <b>arrived</b> in that hour: tasks completed plus the change in the queue. The line is the demand the system was designed for.',
+      'Bars above the line mean the simulation pushed harder than the design; below means it asked for less.',
+    ]);
+
+    const half = Math.ceil(tot.length / 2);
+    const total = tot.reduce((s, x) => s + x, 0) || 1;
+    const firstHalf = tot.slice(0, half).reduce((s, x) => s + x, 0) / total;
+    const over = tot.filter((x) => designTotal && x > designTotal).length;
+    right.insertAdjacentHTML('beforeend', `<h4 class="side-h">How the demand compares</h4>
+      <div class="elim"><div class="elim-head"><b>Overall</b></div>
+        <div class="elim-metric">${d ? pct(d.demandFactor) : fmt(total / r.durationH)}<span>${d ? 'of design demand' : 'tasks released per hour'}</span></div>
+        <p>${fmt(total)} tasks released over ${fmt(r.durationH, 1)} h${designTotal ? `; ${over} of ${tot.length} hours above the design rate` : ''}.</p></div>
+      ${d ? `<div class="elim"><div class="elim-head"><b>Per process</b></div><div class="mini-rows">${d.rows.map((x) => `
+        <div class="mini-row"><span>${ctx.esc(x.process.name)}</span><span class="mini-track"><span style="width:${Math.min(100, (x.demandPct / 1.5) * 100)}%"></span><i style="left:${(1 / 1.5) * 100}%"></i></span><b>${x.group ? pct(x.demandPct) : '–'}</b></div>`).join('')}</div>
+        <p class="elim-looks">Tick = 100% of design. Released = completed + still open at the end, per hour.</p></div>` : ''}
+      <div class="elim"><div class="elim-head"><b>Timing</b><span class="badge ${firstHalf > 0.6 ? 'warning' : 'good'}">${firstHalf > 0.6 ? '! Front-loaded' : '✓ Even'}</span></div>
+        <p>${pct(firstHalf)} of the work arrived in the first half of the run${firstHalf > 0.6 ? ', so a queue was bound to build early (step 4)' : ''}.</p></div>`);
+    if (!d) noDesign(body, 'Comparing demand with the design');
+    why(body, d && d.demandFactor > 1
+      ? `A run released at ${pct(d.demandFactor)} of design is a stress test: anything that passes has headroom. But the queue it builds is partly self-inflicted, so read step 4 with that in mind.`
+      : 'A run that releases less work than the design can\'t prove the design rates: stations that never fill up never show their capacity.');
+  }
+
+  // ---------------------------------------------------------------- step 4
+  function renderKeptUp(body, r, ctx) {
+    const a = r.analysis, k = a.kpis;
+    const grid = div(body, 'step-grid wide-main');
+    const left = div(grid, 'step-main'), right = div(grid, 'step-side');
+    const labels = r.hours.map((h) => `h${h}`);
+    const out = r.system.map((x) => x.openOut), inn = r.system.map((x) => x.openIn);
+    const hasIn = inn.some((v) => v > 0);
+    const pk = k.peakOpenOutHour - 1, last = out.length - 1;
+    const v = div(left, 'viz-card');
+    v.innerHTML = `<h4>${term('open tasks', 'Open tasks')} at the end of each hour</h4>`;
+    const anns = [];
+    if (out[pk] > 0) anns.push({ i: pk, value: out[pk], text: `Peak: ${fmt(out[pk])} waiting`, dx: pk > last / 2 ? -18 : 18, dy: -12, anchor: pk > last / 2 ? 'end' : 'start' });
+    if (last !== pk) anns.push({ i: last, value: out[last], text: `${fmt(out[last])} left at the end`, dx: -16, dy: -30, anchor: 'end' });
+    C.hourly(v, {
+      labels, height: 260, tipTitle: (i) => `End of hour ${r.hours[i]}`,
+      series: [
+        { name: 'Outbound open', color: ctx.SERIES[0], type: 'line', values: out },
+        ...(hasIn ? [{ name: 'Inbound open', color: ctx.SERIES[1], type: 'line', values: inn }] : []),
+      ],
+      annotations: anns,
+      extraTip: (i) => [{ name: 'Completed this hour', value: fmt(r.system[i].finOut + r.system[i].finIn) }, { name: 'Released this hour', value: fmt(Math.max(0, a.flow[i].relOut) + Math.max(0, a.flow[i].relIn)) }],
+    });
+    howTo(left, [
+      `Each point is the queue of unfinished work at the end of an hour. A <b>rising</b> line means more arrived than the system finished; a <b>falling</b> line means it was catching up.`,
+      'A healthy result rises during a demand peak and comes back down. A line that keeps rising to the end means the system can\'t sustain that demand.',
+    ]);
+
+    const growing = r.system.filter((x, i) => x.openOut > (i ? r.system[i - 1].openOut : 0)).length;
+    const lastRate = r.system[last].finOut;
+    const clearMin = lastRate ? (k.endOpenOut / lastRate) * 60 : 0;
+    const drained = k.endOpenOut < k.peakOpenOut * 0.25;
+    const stat = (label, value, sub) => `<div class="stat"><span class="muted small">${label}</span><b>${value}</b>${sub ? `<span class="muted small">${sub}</span>` : ''}</div>`;
+    right.insertAdjacentHTML('beforeend', `<h4 class="side-h">The queue in numbers</h4>
+      <div class="elim stats">
+        ${stat('Hours the queue grew', `${growing} of ${out.length}`, growing ? `h1–h${pk + 1}` : '')}
+        ${stat('Peak queue', fmt(k.peakOpenOut), `end of hour ${k.peakOpenOutHour}`)}
+        ${stat('Left at the end', fmt(k.endOpenOut), clearMin ? `≈${fmt(clearMin)} min more at the final-hour rate` : 'fully cleared')}
+        ${stat('Completed of released', pct(k.completionOut, 1), 'outbound')}
+        ${hasIn ? stat('Inbound queue', k.endOpenIn ? `${fmt(k.endOpenIn)} left` : 'cleared', `peak ${fmt(k.peakOpenIn)} in hour ${k.peakOpenInHour}`) : ''}
+      </div>
+      <div class="elim"><div class="elim-head"><b>Verdict</b><span class="badge ${growing < 2 ? 'good' : drained ? 'warning' : 'critical'}">${growing < 2 ? '✓ Kept up' : drained ? '! Caught up later' : '✕ Fell behind'}</span></div>
+        <p>${growing < 2 ? 'Completion tracked arrivals all run.' : drained ? `Arrivals outran completion for ${growing} hours, then the system worked the queue down. That pattern is a demand peak being absorbed, not a capacity shortfall.` : 'The queue was still large at the end: at this demand the system needs more capacity or a longer window.'}</p></div>`);
+    why(body, 'Throughput alone hides delay. A queue of 10,000 tasks means orders waiting, possibly past cut-off times. Whether the queue drains decides if the design copes with the peak or just postpones it.');
+  }
+
+  // ---------------------------------------------------------------- step 6
+  function renderStations(body, r, ctx) {
+    const a = r.analysis, k = a.kpis;
+    const grid = div(body, 'step-grid wide-main');
+    const left = div(grid, 'step-main'), right = div(grid, 'step-side');
+    const v = div(left, 'viz-card');
+    v.innerHTML = `<h4>Every station's average rate, grouped by ${r.profile ? 'process' : 'station type'}</h4>`;
+    C.strip(v, {
+      types: a.types, ceiling: k.ceiling, color: ctx.SERIES[0], flagColor: 'var(--status-critical)',
+      ceilingLabel: k.ceiling ? `If wait time were the only delay: ${fmt(k.ceiling)}/h` : '',
+    });
+    howTo(left, [
+      'Each dot is one station, placed at the tote presentations it handled per hour on average. The short vertical line is the median of its group.',
+      'Dots should sit in a tight cluster. A dot well to the left of its group (marked ▲) is a station doing less than its peers: check its configuration and order assignment.',
+    ]);
+    const H = r.hours.length;
+    right.insertAdjacentHTML('beforeend', `<h4 class="side-h">Per ${r.profile ? 'process' : 'station type'}</h4>
+      ${a.types.map((t) => {
+        const ok = !t.outliers.length;
+        const idle = t.lastActive && t.lastActive < H;
+        return `<div class="elim"><div class="elim-head"><b>${ctx.esc(t.label)}</b><span class="badge ${ok ? 'good' : 'critical'}">${ok ? '✓ Consistent' : `✕ ${t.outliers.length} low`}</span></div>
+          <div class="elim-metric">${fmt(t.median)}/h <span>median · ${t.count} station${t.count > 1 ? 's' : ''}</span></div>
+          <p>${t.count > 1 ? `Range ${fmt(t.min)}–${fmt(t.max)}/h.` : 'Single station.'}${ok ? '' : ` ${t.outliers.map((s) => `<b>${ctx.esc(s.code)}</b> ${fmt(s.avgPerHour)}/h`).join(', ')}.`}${idle ? ` Finished its work in hour ${t.lastActive} and was idle afterwards.` : ''}${t.flat && !t.isLabor && t.count === 1 ? ' Its output is flat every hour: it handled all the work it was given.' : ''}</p></div>`;
+      }).join('')}`);
+    why(body, 'One misconfigured or under-fed station quietly lowers capacity, and it hides inside totals. Checking each station against its own group catches it before results go to the customer.');
+  }
+
+  // ---------------------------------------------------------------- step 7
+  function renderMargin(body, r, ctx) {
+    const mg = marginNumbers(r), d = r.analysis.design;
+    if (!mg) {
+      const b = div(body, 'coming');
+      b.textContent = 'The stations never reached a shared ceiling in this run, so their capacity, and with it the margin, can\'t be measured. A run with more demand would show it.';
+      return;
+    }
+    const grid = div(body, 'step-grid');
+    const left = div(grid, 'step-main'), right = div(grid, 'step-side');
+    const bars = [
+      ...(mg.target ? [{ label: 'Design target', value: mg.target, cls: 'target', sub: d ? ctx.esc(d.profile.profileName || d.profile.name) : '' }] : []),
+      { label: `Capacity with ${mg.stationsDesign} design stations`, value: mg.capDesign, cls: 'cap', sub: `${mg.stationsDesign} × ${fmt(mg.rate)}/h` },
+      ...(mg.stationsSim !== mg.stationsDesign ? [{ label: `Capacity as simulated`, value: mg.capSim, cls: 'cap-sim', sub: `${mg.stationsSim} × ${fmt(mg.rate)}/h` }] : []),
+      ...(mg.maxRate ? [{ label: 'Workstation max (theoretical)', value: mg.maxRate * mg.stationsDesign, cls: 'max', sub: `${mg.stationsDesign} × ${fmt(mg.maxRate)}/h` }] : []),
+    ];
+    const scale = Math.max(...bars.map((b) => b.value)) * 1.05;
+    const v = div(left, 'viz-card');
+    v.innerHTML = `<h4>${ctx.esc(mg.name)}: capacity vs target, tote presentations per hour</h4>
+      <div class="cap-bars">${bars.map((b) => `<div class="cap-row ${b.cls}"><span class="cap-label">${b.label}<small>${b.sub}</small></span>
+        <span class="cap-track"><span class="cap-fill" style="width:${(b.value / scale) * 100}%"></span>${mg.target && b.cls !== 'target' ? `<i class="cap-target" style="left:${(mg.target / scale) * 100}%"></i>` : ''}</span>
+        <b class="cap-val">${fmt(b.value)}${mg.target && b.cls !== 'target' ? `<small>${pct(b.value / mg.target)}</small>` : ''}</b></div>`).join('')}</div>`;
+    howTo(left, [
+      `Capacity is the rate the stations actually sustained when they were full (${fmt(mg.rate)}/h each) multiplied by the number of stations. The black tick on each bar is the design target.`,
+      'Read the second bar, the design\'s own station count: that is the margin the proposal really has. The simulated count can flatter it when the model has extra stations.',
+    ]);
+    const lever = (title, value, text) => `<div class="elim"><div class="elim-head"><b>${title}</b></div><div class="elim-metric">${value}</div><p>${text}</p></div>`;
+    right.insertAdjacentHTML('beforeend', `<h4 class="side-h">Where the margin is</h4>
+      ${mg.target ? lever('Stations needed', `${mg.stationsNeeded} <span>of ${mg.stationsDesign} designed</span>`, `At ${fmt(mg.rate)}/h per station, ${mg.stationsNeeded} stations cover ${fmt(mg.target)}/h, leaving ${mg.stationsDesign - mg.stationsNeeded} spare in the design.`) : ''}
+      ${mg.cycleAllowed ? lever('Cycle time allowed', `${fmt(mg.cycleAllowed, 1)} s <span>vs ${fmt(mg.cycle, 1)} s simulated</span>`, `Each station can take up to ${fmt(mg.cycleAllowed - mg.cycle, 1)} s longer per tote and still meet the target with ${mg.stationsDesign} stations.`) : ''}
+      ${mg.target ? lever('Demand growth absorbed', `${mg.capDesignPct >= 1 ? '+' : ''}${pct(mg.capDesignPct - 1)}`, mg.capDesignPct >= 1 ? `Demand can grow by about ${pct(mg.capDesignPct - 1)} before the ${mg.stationsDesign} stations are full.` : 'The designed stations can\'t reach the target at the simulated station rate.') : ''}
+      ${d ? `<p class="muted small">${d.rows.filter((x) => !x.capacity && x.group).map((x) => ctx.esc(x.process.name)).join(', ') || 'Other processes'}: their stations never filled up, so this run doesn't measure their capacity.</p>` : ''}`);
+    why(body, 'Margin is what protects the customer when volumes grow or operators slow down. Quote it with the design\'s station count, and say which lever moves it: stations or cycle time, not robots (step 5).');
+  }
+
+  // ---------------------------------------------------------------- step 8
+  function renderSummary(body, r, ctx, ans) {
+    const a = r.analysis, k = a.kpis, d = a.design;
+    const plain = (html) => String(html).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    const mg = marginNumbers(r);
+    const lim = limitAnswer(r);
+    const para = [];
+    para.push(`${r.label}: ${fmt(r.durationH, 1)}-hour simulation${d ? `, checked against the ${d.profile.profileName || d.profile.name} design inputs` : ''}. ${d ? `Work was released at about ${pct(d.demandFactor)} of the design demand.` : ''}`);
+    if (d) para.push(`Design targets: ${k.designPass} of ${k.designTotal} met. ${d.rows.map((x) => `${x.process.name} ${fmt(x.actual)}/h vs ${fmt(x.process.target)}/h (${pct(x.pct)})`).join('; ')}.`);
+    const grew = r.system.filter((x, i) => x.openOut > (i ? r.system[i - 1].openOut : 0)).length;
+    const flowLine = grew < 2 ? 'Completion kept pace with arriving work throughout the run.'
+      : k.endOpenOut < k.peakOpenOut * 0.25
+        ? `During the demand peak, open work built up to ${fmt(k.peakOpenOut)} tasks by hour ${k.peakOpenOutHour} and was worked down to ${fmt(k.endOpenOut)} by the end of the run.`
+        : `Open work built up to ${fmt(k.peakOpenOut)} tasks and ${fmt(k.endOpenOut)} were still open at the end of the run.`;
+    para.push(`The system completed ${fmt(k.total)} tote presentations (${fmt(k.perHour)}/h on average). ${flowLine}`);
+    if (a.labor && a.labor.plateau) para.push(`Throughput is limited by the ${a.labor.label.toLowerCase()} stations (about ${fmt(a.labor.steadyMedian)} tote presentations per station per hour), not by the robots (≈${fmt(k.robotFleet)} robots at ${fmt(k.robotRate, 1)} per robot per hour) or charging (${fmt(k.chargerMean)}% average utilization).`);
+    else para.push(plain(lim.text));
+    if (mg && mg.target) para.push(`With the design's ${mg.stationsDesign} ${mg.name.toLowerCase()} stations, capacity is about ${fmt(mg.capDesign)}/h, ${pct(mg.capDesignPct)} of the ${fmt(mg.target)}/h target, so demand can grow by about ${pct(Math.max(0, mg.capDesignPct - 1))} before the stations are full.`);
+    const asks = runChecks(r, ctx).checks.filter((c) => c.ask).map((c) => c.ask);
+
+    const grid = div(body, 'step-grid');
+    const left = div(grid, 'step-main'), right = div(grid, 'step-side');
+    const cs = div(left, 'viz-card summary-card');
+    cs.innerHTML = `<div class="summary-head"><h4>Summary for the customer</h4><button class="btn small primary" type="button" data-copy="customer">Copy text</button></div>
+      ${para.map((p) => `<p>${ctx.esc(p)}</p>`).join('')}`;
+    howTo(left, [
+      'Generated from steps 1–7. Copy it into an email or report and edit as needed: check the wording against your proposal before sending.',
+    ]);
+    const steps = STEPS.slice(0, -1).map((s, i) => `<li><a href="#step-${s.id}"><span class="dot ${ans[s.id].level}">${i + 1}</span><span><b>${s.q}</b><span class="muted small">${plain(ans[s.id].text)}</span></span></a></li>`).join('');
+    right.insertAdjacentHTML('beforeend', `<div class="checklist step-recap"><h4>The walkthrough at a glance</h4><ol>${steps}</ol></div>
+      ${asks.length ? `<div class="ask-box"><h4>Settle internally before sending</h4><ol>${asks.map((q) => `<li>${ctx.esc(q)}</li>`).join('')}</ol><button class="btn small" type="button" data-copy="internal">Copy questions</button></div>` : ''}`);
+    const texts = {
+      customer: para.join('\n\n'),
+      internal: `Open points on ${r.label} (${r.reportCode}):\n` + asks.map((q, i) => `${i + 1}. ${q}`).join('\n'),
+    };
+    body.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+      const old = b.textContent;
+      try { await navigator.clipboard.writeText(texts[b.dataset.copy]); b.textContent = 'Copied ✓'; } catch (_) { b.textContent = 'Copy failed'; }
+      setTimeout(() => (b.textContent = old), 2000);
+    }));
+  }
+
   // ---------------------------------------------------------------- shell
   function render(view, r, ctx) {
     const ans = answers(r, ctx);
@@ -324,18 +593,19 @@
       const ch = document.createElement('section');
       ch.className = 'chapter';
       ch.id = `step-${s.id}`;
-      const built = s.id === 'run' || s.id === 'limit';
       ch.innerHTML = `<div class="eyebrow">Step ${i + 1} of ${STEPS.length}</div>
         <h2 class="question">${s.q}</h2>
         <p class="answer ${ans[s.id].level}"><span class="badge ${ans[s.id].level}">${ctx.statusIcon(ans[s.id].level)} ${ctx.levelLabel(ans[s.id].level)}</span><span>${ans[s.id].text}</span></p>`;
       main.appendChild(ch);
       const body = div(ch, 'chapter-body');
-      if (s.id === 'run') renderRun(body, r, ctx);
-      else if (s.id === 'limit') renderLimit(body, r, ctx);
-      if (!built) {
-        body.innerHTML = `<div class="coming">The full walkthrough for this step is coming. For now, the details are in the dashboard.
-          <button class="btn small" type="button" data-goto="${s.dash}">Open in full dashboard →</button></div>`;
-        ch.classList.add('stub');
+      const renderers = {
+        run: renderRun, met: renderMet, pushed: renderPushed, keptup: renderKeptUp,
+        limit: renderLimit, stations: renderStations, margin: renderMargin, summary: renderSummary,
+      };
+      try { renderers[s.id](body, r, ctx, ans); } catch (e) {
+        body.innerHTML = `<div class="coming">This step couldn't be drawn for this report (${ctx.esc(e.message)}). The details are in the full dashboard.
+          <button class="btn small" type="button" data-goto="${s.dash || 's-findings'}">Open in full dashboard →</button></div>`;
+        console.error(e);
       }
       const nav = div(ch, 'chapter-nav');
       nav.innerHTML = `${i ? `<a class="btn" href="#step-${STEPS[i - 1].id}">← ${STEPS[i - 1].short}</a>` : '<span></span>'}${i < STEPS.length - 1 ? `<a class="btn primary" href="#step-${STEPS[i + 1].id}">Next: ${STEPS[i + 1].q} →</a>` : ''}`;

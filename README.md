@@ -25,16 +25,16 @@ Everything runs locally in the browser and nothing is uploaded.
 engineer would ask them. A step rail on the left shows each step's status (✓ / ! / ✕), so it
 doubles as the executive summary. Use ← → to move between steps.
 
-1. Is this the right run? *(built)*: data completeness, design basis, station counts vs design, parameter mismatches, and a copyable list of questions for the simulation engineer
-2. Did it meet the design?
-3. How hard was it pushed?
-4. Did the system keep up?
-5. What limited it? *(built)*: every station of the main process hour by hour against its ceiling, the cycle split into wait time and tote exchange vs the cycle needed for target, and stations / robots / chargers checked one by one
-6. Is every station behaving?
-7. How much margin is there?
-8. What do I tell the customer?
+1. **Is this the right run?** Data completeness, design basis, workstations in the simulation vs the design (✓ / ! / ✕ per process), parameter mismatches, and copyable questions for the simulation engineer.
+2. **Did it meet the design?** Per process: simulated rate vs target, with the work released behind it. Pass / Not proven / Below target, explained.
+3. **How hard was it pushed?** Work released per hour against the design demand, per-process demand vs design, and whether the release was front-loaded.
+4. **Did the system keep up?** The open-task queue hour by hour, its peak and end, the time to clear it, and a verdict (kept up / caught up later / fell behind).
+5. **What limited it?** Every station of the main process against its ceiling, the cycle split into wait and tote exchange vs the cycle needed for target, and stations / robots / chargers checked one by one.
+6. **Is every station behaving?** Each station's rate within its process group, with outliers, idle time and flat (demand-limited) stations called out.
+7. **How much margin is there?** Capacity with the design's station count vs the target (and as simulated, and the theoretical workstation max), stations needed, cycle time allowed, demand growth absorbed.
+8. **What do I tell the customer?** A customer-ready summary built from steps 1–7 with **Copy text**, the eight answers at a glance, and the open points to settle internally.
 
-Steps not built yet show their answer and link to the matching dashboard section.
+Every step degrades gracefully: without design inputs, steps 2–3 ask for them and the others compare stations by type.
 
 **Full dashboard** puts everything on one page:
 
